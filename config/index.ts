@@ -6,8 +6,8 @@ import type {Plugin} from 'vite'
 import {UnifiedViteWeappTailwindcssPlugin as uvtw} from 'weapp-tailwindcss/vite'
 
 import devConfig from './dev'
-import prodConfig from './prod'
 import lintConfig from './lint'
+import prodConfig from './prod'
 
 const base = String(process.argv[process.argv.length - 1])
 const publicPath = /^http/.test(base) ? base : '/'
@@ -138,10 +138,10 @@ export default defineConfig<'vite'>(async (merge) => {
   }
 
   if (process.env.NODE_ENV === 'development') {
-    const sentryDsn = process.env.INJECT_SENTRY_DSN;
-    const environment = process.env.MIAODA_ENV;
-    const appid = process.env.TARO_APP_APP_ID;
-    const cdnHost = process.env.MIAODA_CDN_HOST || 'resource-static.cdn.bcebos.com';
+    const sentryDsn = process.env.INJECT_SENTRY_DSN
+    const environment = process.env.MIAODA_ENV
+    const appid = process.env.TARO_APP_APP_ID
+    const cdnHost = process.env.MIAODA_CDN_HOST || 'resource-static.cdn.bcebos.com'
     // 本地开发构建配置（不混淆压缩）
     return merge({}, baseConfig, devConfig(sentryDsn, environment, appid, cdnHost))
   }
@@ -149,4 +149,3 @@ export default defineConfig<'vite'>(async (merge) => {
   // 生产构建配置（默认开启压缩混淆等）
   return merge({}, baseConfig, prodConfig)
 })
-
