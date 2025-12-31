@@ -1,5 +1,5 @@
 import {Button, Image, ScrollView, Text, View} from '@tarojs/components'
-import Taro from '@tarojs/taro'
+import Taro, {useDidShow} from '@tarojs/taro'
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {createEvaluation} from '@/db/api'
 import type {LocalEvaluationResult} from '@/utils/localEvaluation'
@@ -12,6 +12,7 @@ export default function CameraPage() {
   const [evaluation, setEvaluation] = useState<LocalEvaluationResult | null>(null)
   const [showResult, setShowResult] = useState(false)
   const analyzeTimerRef = useRef<any>(null)
+  const hasAutoCalledRef = useRef(false)
 
   // 清理定时器
   useEffect(() => {
@@ -59,11 +60,25 @@ export default function CameraPage() {
         // 自动开始分析
         analyzePhoto(imagePath)
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('拍照失败:', error)
-      Taro.showToast({title: '拍照失败', icon: 'none'})
+      // 用户取消拍照不显示错误提示
+      if (error.errMsg && !error.errMsg.includes('cancel')) {
+        Taro.showToast({title: '拍照失败', icon: 'none'})
+      }
     }
   }, [analyzePhoto])
+
+  // 页面显示时自动调用相机（仅首次）
+  useDidShow(() => {
+    if (!hasAutoCalledRef.current && !currentImage) {
+      hasAutoCalledRef.current = true
+      // 延迟一下，确保页面已经渲染
+      setTimeout(() => {
+        takePhoto()
+      }, 500)
+    }
+  })
 
   // 重新拍照
   const retakePhoto = useCallback(() => {
@@ -137,6 +152,30 @@ export default function CameraPage() {
     return 'text-orange-500'
   }
 
+  // 生成简略建议（不超过10个字）
+  const getShortSuggestion = (dimension: string, score: number): string => {
+    switch (dimension) {
+      case 'composition':
+        if (score < 20) return '构图需优化'
+        if (score < 25) return '可调整主体'
+        return '构图良好'
+      case 'angle':
+        if (score < 12) return '角度欠佳'
+        if (score < 16) return '可换视角'
+        return '角度合适'
+      case 'distance':
+        if (score < 6) return '距离不当'
+        if (score < 8) return '可调距离'
+        return '距离适中'
+      case 'height':
+        if (score < 6) return '光线不足'
+        if (score < 8) return '曝光欠佳'
+        return '光线良好'
+      default:
+        return ''
+    }
+  }
+
   return (
     <View className="min-h-screen bg-gradient-dark">
       <ScrollView scrollY style={{height: '100vh', background: 'transparent'}}>
@@ -159,11 +198,11 @@ export default function CameraPage() {
             </View>
           ) : (
             <View
-              className="w-full bg-card rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center mb-6"
+              className="w-full bg-gradient-subtle rounded-2xl border-2 border-dashed border-primary/30 flex flex-col items-center justify-center mb-6"
               style={{height: '400px'}}
               onClick={takePhoto}>
-              <View className="i-mdi-camera text-6xl text-muted-foreground mb-4" />
-              <Text className="text-base text-foreground mb-2">点击调用相机拍照</Text>
+              <View className="i-mdi-camera text-6xl text-primary mb-4" />
+              <Text className="text-base text-white mb-2">点击调用相机拍照</Text>
               <Text className="text-sm text-muted-foreground">拍照后立即获得评分和建议</Text>
             </View>
           )}
@@ -182,75 +221,99 @@ export default function CameraPage() {
                 </View>
               </View>
 
-              {/* 各项得分 */}
+              {/* 各项得分（带简略建议） */}
               <View className="space-y-4 mb-6">
-                <View className="flex flex-row items-center justify-between">
-                  <Text className="text-sm text-foreground">构图</Text>
-                  <View className="flex flex-row items-center">
-                    <View className="w-32 h-2 bg-muted rounded-full overflow-hidden mr-3">
-                      <View
-                        className="h-full bg-primary rounded-full"
-                        style={{
-                          width: `${(evaluation.composition_score / 30) * 100}%`
-                        }}
-                      />
+                {/* 构图 */}
+                <View>
+                  <View className="flex flex-row items-center justify-between mb-2">
+                    <Text className="text-sm text-foreground">构图</Text>
+                    <View className="flex flex-row items-center">
+                      <Text className="text-xs text-muted-foreground mr-2">
+                        {getShortSuggestion('composition', evaluation.composition_score)}
+                      </Text>
+                      <Text className="text-sm text-foreground font-medium">{evaluation.composition_score}/30</Text>
                     </View>
-                    <Text className="text-sm text-foreground w-12 text-right">{evaluation.composition_score}/30</Text>
+                  </View>
+                  <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                    <View
+                      className="h-full bg-primary rounded-full"
+                      style={{
+                        width: `${(evaluation.composition_score / 30) * 100}%`
+                      }}
+                    />
                   </View>
                 </View>
 
-                <View className="flex flex-row items-center justify-between">
-                  <Text className="text-sm text-foreground">角度</Text>
-                  <View className="flex flex-row items-center">
-                    <View className="w-32 h-2 bg-muted rounded-full overflow-hidden mr-3">
-                      <View
-                        className="h-full bg-secondary rounded-full"
-                        style={{
-                          width: `${(evaluation.angle_score / 20) * 100}%`
-                        }}
-                      />
+                {/* 角度 */}
+                <View>
+                  <View className="flex flex-row items-center justify-between mb-2">
+                    <Text className="text-sm text-foreground">角度</Text>
+                    <View className="flex flex-row items-center">
+                      <Text className="text-xs text-muted-foreground mr-2">
+                        {getShortSuggestion('angle', evaluation.angle_score)}
+                      </Text>
+                      <Text className="text-sm text-foreground font-medium">{evaluation.angle_score}/20</Text>
                     </View>
-                    <Text className="text-sm text-foreground w-12 text-right">{evaluation.angle_score}/20</Text>
+                  </View>
+                  <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                    <View
+                      className="h-full bg-secondary rounded-full"
+                      style={{
+                        width: `${(evaluation.angle_score / 20) * 100}%`
+                      }}
+                    />
                   </View>
                 </View>
 
-                <View className="flex flex-row items-center justify-between">
-                  <Text className="text-sm text-foreground">距离</Text>
-                  <View className="flex flex-row items-center">
-                    <View className="w-32 h-2 bg-muted rounded-full overflow-hidden mr-3">
-                      <View
-                        className="h-full bg-accent rounded-full"
-                        style={{
-                          width: `${(evaluation.distance_score / 10) * 100}%`
-                        }}
-                      />
+                {/* 距离 */}
+                <View>
+                  <View className="flex flex-row items-center justify-between mb-2">
+                    <Text className="text-sm text-foreground">距离</Text>
+                    <View className="flex flex-row items-center">
+                      <Text className="text-xs text-muted-foreground mr-2">
+                        {getShortSuggestion('distance', evaluation.distance_score)}
+                      </Text>
+                      <Text className="text-sm text-foreground font-medium">{evaluation.distance_score}/10</Text>
                     </View>
-                    <Text className="text-sm text-foreground w-12 text-right">{evaluation.distance_score}/10</Text>
+                  </View>
+                  <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                    <View
+                      className="h-full bg-accent rounded-full"
+                      style={{
+                        width: `${(evaluation.distance_score / 10) * 100}%`
+                      }}
+                    />
                   </View>
                 </View>
 
-                <View className="flex flex-row items-center justify-between">
-                  <Text className="text-sm text-foreground">高度</Text>
-                  <View className="flex flex-row items-center">
-                    <View className="w-32 h-2 bg-muted rounded-full overflow-hidden mr-3">
-                      <View
-                        className="h-full bg-primary rounded-full"
-                        style={{
-                          width: `${(evaluation.height_score / 10) * 100}%`
-                        }}
-                      />
+                {/* 高度 */}
+                <View>
+                  <View className="flex flex-row items-center justify-between mb-2">
+                    <Text className="text-sm text-foreground">高度</Text>
+                    <View className="flex flex-row items-center">
+                      <Text className="text-xs text-muted-foreground mr-2">
+                        {getShortSuggestion('height', evaluation.height_score)}
+                      </Text>
+                      <Text className="text-sm text-foreground font-medium">{evaluation.height_score}/10</Text>
                     </View>
-                    <Text className="text-sm text-foreground w-12 text-right">{evaluation.height_score}/10</Text>
+                  </View>
+                  <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                    <View
+                      className="h-full bg-primary rounded-full"
+                      style={{
+                        width: `${(evaluation.height_score / 10) * 100}%`
+                      }}
+                    />
                   </View>
                 </View>
               </View>
 
-              {/* 改进建议 */}
+              {/* 详细改进建议 */}
               {Object.keys(evaluation.suggestions).length > 0 && (
                 <View className="bg-muted/50 rounded-xl p-4">
                   <View className="flex flex-row items-center mb-3">
                     <View className="i-mdi-lightbulb-on text-xl text-primary mr-2" />
-                    <Text className="text-sm font-semibold text-foreground">改进建议</Text>
+                    <Text className="text-sm font-semibold text-foreground">详细建议</Text>
                   </View>
                   <View className="space-y-2">
                     {evaluation.suggestions.composition && (

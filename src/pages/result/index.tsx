@@ -73,6 +73,36 @@ export default function ResultPage() {
     return '需改进'
   }
 
+  // 生成简略建议（不超过10个字）
+  const getShortSuggestion = (dimension: string, score: number | null): string => {
+    if (score === null) return ''
+
+    switch (dimension) {
+      case 'composition':
+        if (score < 20) return '构图需优化'
+        if (score < 25) return '可调整主体'
+        return '构图良好'
+      case 'pose':
+        if (score < 20) return '姿态欠佳'
+        if (score < 25) return '可调整姿势'
+        return '姿态自然'
+      case 'angle':
+        if (score < 12) return '角度欠佳'
+        if (score < 16) return '可换视角'
+        return '角度合适'
+      case 'distance':
+        if (score < 6) return '距离不当'
+        if (score < 8) return '可调距离'
+        return '距离适中'
+      case 'height':
+        if (score < 6) return '光线不足'
+        if (score < 8) return '曝光欠佳'
+        return '光线良好'
+      default:
+        return ''
+    }
+  }
+
   return (
     <View className="min-h-screen bg-gradient-dark">
       <ScrollView scrollY style={{height: '100vh', background: 'transparent'}}>
@@ -108,9 +138,14 @@ export default function ResultPage() {
                       <View className="i-mdi-grid text-xl text-primary mr-2" />
                       <Text className="text-sm font-medium text-foreground">构图合理性</Text>
                     </View>
-                    <Text className={`text-lg font-bold ${getScoreColor(evaluation.composition_score)}`}>
-                      {evaluation.composition_score}/30
-                    </Text>
+                    <View className="flex flex-row items-center">
+                      <Text className="text-xs text-muted-foreground mr-2">
+                        {getShortSuggestion('composition', evaluation.composition_score)}
+                      </Text>
+                      <Text className={`text-lg font-bold ${getScoreColor(evaluation.composition_score)}`}>
+                        {evaluation.composition_score}/30
+                      </Text>
+                    </View>
                   </View>
                   <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
                     <View
@@ -131,9 +166,14 @@ export default function ResultPage() {
                       <View className="i-mdi-human-handsup text-xl text-secondary mr-2" />
                       <Text className="text-sm font-medium text-foreground">人物姿态</Text>
                     </View>
-                    <Text className={`text-lg font-bold ${getScoreColor(evaluation.pose_score)}`}>
-                      {evaluation.pose_score}/30
-                    </Text>
+                    <View className="flex flex-row items-center">
+                      <Text className="text-xs text-muted-foreground mr-2">
+                        {getShortSuggestion('pose', evaluation.pose_score)}
+                      </Text>
+                      <Text className={`text-lg font-bold ${getScoreColor(evaluation.pose_score)}`}>
+                        {evaluation.pose_score}/30
+                      </Text>
+                    </View>
                   </View>
                   <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
                     <View
@@ -154,9 +194,14 @@ export default function ResultPage() {
                       <View className="i-mdi-angle-acute text-xl text-accent mr-2" />
                       <Text className="text-sm font-medium text-foreground">拍摄角度</Text>
                     </View>
-                    <Text className={`text-lg font-bold ${getScoreColor(evaluation.angle_score)}`}>
-                      {evaluation.angle_score}/20
-                    </Text>
+                    <View className="flex flex-row items-center">
+                      <Text className="text-xs text-muted-foreground mr-2">
+                        {getShortSuggestion('angle', evaluation.angle_score)}
+                      </Text>
+                      <Text className={`text-lg font-bold ${getScoreColor(evaluation.angle_score)}`}>
+                        {evaluation.angle_score}/20
+                      </Text>
+                    </View>
                   </View>
                   <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
                     <View
@@ -177,9 +222,14 @@ export default function ResultPage() {
                       <View className="i-mdi-ruler text-xl text-primary mr-2" />
                       <Text className="text-sm font-medium text-foreground">拍摄距离</Text>
                     </View>
-                    <Text className={`text-lg font-bold ${getScoreColor(evaluation.distance_score)}`}>
-                      {evaluation.distance_score}/10
-                    </Text>
+                    <View className="flex flex-row items-center">
+                      <Text className="text-xs text-muted-foreground mr-2">
+                        {getShortSuggestion('distance', evaluation.distance_score)}
+                      </Text>
+                      <Text className={`text-lg font-bold ${getScoreColor(evaluation.distance_score)}`}>
+                        {evaluation.distance_score}/10
+                      </Text>
+                    </View>
                   </View>
                   <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
                     <View
@@ -200,9 +250,14 @@ export default function ResultPage() {
                       <View className="i-mdi-arrow-expand-vertical text-xl text-secondary mr-2" />
                       <Text className="text-sm font-medium text-foreground">机位高度</Text>
                     </View>
-                    <Text className={`text-lg font-bold ${getScoreColor(evaluation.height_score)}`}>
-                      {evaluation.height_score}/10
-                    </Text>
+                    <View className="flex flex-row items-center">
+                      <Text className="text-xs text-muted-foreground mr-2">
+                        {getShortSuggestion('height', evaluation.height_score)}
+                      </Text>
+                      <Text className={`text-lg font-bold ${getScoreColor(evaluation.height_score)}`}>
+                        {evaluation.height_score}/10
+                      </Text>
+                    </View>
                   </View>
                   <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
                     <View
