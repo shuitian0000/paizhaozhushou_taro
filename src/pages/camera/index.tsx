@@ -1,5 +1,5 @@
 import {Button, Camera, Image, ScrollView, Text, View} from '@tarojs/components'
-import Taro, {getEnv} from '@tarojs/taro'
+import Taro, {getEnv, useDidShow} from '@tarojs/taro'
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {createEvaluation} from '@/db/api'
 import type {LocalEvaluationResult} from '@/utils/localEvaluation'
@@ -7,38 +7,93 @@ import {evaluatePhotoLocally} from '@/utils/localEvaluation'
 import {uploadFile} from '@/utils/upload'
 
 export default function CameraPage() {
-  const [mode, setMode] = useState<'realtime' | 'capture'>('realtime') // realtime: 实时评估, capture: 拍照评估
+  const [mode, setMode] = useState<'realtime' | 'capture' | 'fallback'>('realtime')
   const [currentImage, setCurrentImage] = useState<string | null>(null)
   const [_analyzing, setAnalyzing] = useState(false)
   const [evaluation, setEvaluation] = useState<LocalEvaluationResult | null>(null)
   const [showResult, setShowResult] = useState(false)
   const [realtimeSuggestions, setRealtimeSuggestions] = useState<string[]>([])
   const [cameraReady, setCameraReady] = useState(false)
+  const [_initTimeout, setInitTimeout] = useState(false)
   const analyzeTimerRef = useRef<any>(null)
   const realtimeTimerRef = useRef<any>(null)
   const cameraCtxRef = useRef<any>(null)
+  const initTimeoutRef = useRef<any>(null)
   const isWeApp = getEnv() === 'WEAPP'
 
-  console.log('Camera页面渲染，环境:', getEnv(), 'isWeApp:', isWeApp, 'mode:', mode)
+  console.log('📱 Camera页面渲染')
+  console.log('环境:', getEnv())
+  console.log('isWeApp:', isWeApp)
+  console.log('mode:', mode)
+  console.log('cameraReady:', cameraReady)
+
+  // 页面显示时启动超时检测
+  useDidShow(() => {
+    console.log('📱 页面显示，启动超时检测')
+
+    // 清除旧的超时定时器
+    if (initTimeoutRef.current) {
+      clearTimeout(initTimeoutRef.current)
+    }
+
+    // 5秒后如果Camera还没准备好，显示降级方案
+    initTimeoutRef.current = setTimeout(() => {
+      if (!cameraReady && mode === 'realtime') {
+        console.log('⏰ Camera初始化超时（5秒），切换到降级方案')
+        setInitTimeout(true)
+        Taro.showModal({
+          title: '提示',
+          content: 'Camera组件在开发者工具中可能不支持，建议使用真机调试。是否使用备用拍照方案？',
+          confirmText: '使用备用方案',
+          cancelText: '继续等待',
+          success: (res) => {
+            if (res.confirm) {
+              console.log('用户选择使用备用方案')
+              setMode('fallback')
+            } else {
+              console.log('用户选择继续等待')
+              // 再等待5秒
+              initTimeoutRef.current = setTimeout(() => {
+                if (!cameraReady) {
+                  console.log('⏰ 再次超时，强制切换到降级方案')
+                  setMode('fallback')
+                }
+              }, 5000)
+            }
+          }
+        })
+      }
+    }, 5000)
+  })
 
   // 清理定时器
   useEffect(() => {
     return () => {
-      console.log('组件卸载，清理定时器')
+      console.log('🧹 组件卸载，清理所有定时器')
       if (analyzeTimerRef.current) {
         clearTimeout(analyzeTimerRef.current)
       }
       if (realtimeTimerRef.current) {
         clearInterval(realtimeTimerRef.current)
       }
+      if (initTimeoutRef.current) {
+        clearTimeout(initTimeoutRef.current)
+      }
     }
   }, [])
 
-  // Camera组件准备完成 - 移除所有依赖，避免闭包问题
+  // Camera组件准备完成
   const handleCameraReady = useCallback(() => {
-    console.log('=== Camera组件onReady回调被触发 ===')
+    console.log('=== 🎉 Camera组件onReady回调被触发 ===')
     console.log('当前环境 getEnv():', getEnv())
     console.log('isWeApp:', isWeApp)
+
+    // 清除超时定时器
+    if (initTimeoutRef.current) {
+      console.log('✅ 清除超时定时器')
+      clearTimeout(initTimeoutRef.current)
+      initTimeoutRef.current = null
+    }
 
     if (!isWeApp) {
       console.error('❌ 非小程序环境，Camera组件不可用')
@@ -47,10 +102,12 @@ export default function CameraPage() {
     }
 
     try {
-      console.log('开始创建CameraContext...')
+      console.log('🔧 开始创建CameraContext...')
       const ctx = Taro.createCameraContext()
       console.log('CameraContext创建结果:', ctx)
       console.log('CameraContext类型:', typeof ctx)
+      console.log('CameraContext是否为null:', ctx === null)
+      console.log('CameraContext是否为undefined:', ctx === undefined)
 
       if (!ctx) {
         console.error('❌ CameraContext创建失败，返回null或undefined')
@@ -65,10 +122,12 @@ export default function CameraPage() {
       setCameraReady(true)
       console.log('✅ cameraReady状态已设置为true')
 
+      Taro.showToast({title: '相机已就绪', icon: 'success', duration: 1500})
+
       // Camera准备好后，延迟500ms启动实时评估
-      console.log('准备启动实时评估（延迟500ms）')
+      console.log('⏱️ 准备启动实时评估（延迟500ms）')
       setTimeout(() => {
-        console.log('=== 延迟后开始启动实时评估 ===')
+        console.log('=== 🚀 延迟后开始启动实时评估 ===')
 
         if (!cameraCtxRef.current) {
           console.error('❌ CameraContext丢失')
@@ -86,14 +145,14 @@ export default function CameraPage() {
         }
 
         // 每2秒采集一次镜头
-        console.log('启动定时器，每2秒采集一次')
+        console.log('⏰ 启动定时器，每2秒采集一次')
         const timerId = setInterval(() => {
           if (!cameraCtxRef.current) {
             console.error('❌ 定时器执行时CameraContext丢失')
             return
           }
 
-          console.log('--- 开始采集镜头 ---')
+          console.log('--- 📸 开始采集镜头 ---')
           cameraCtxRef.current.takePhoto({
             quality: 'low',
             success: async (res: any) => {
@@ -132,7 +191,7 @@ export default function CameraPage() {
                   suggestions.push('画面良好，可以拍摄')
                 }
 
-                console.log('实时建议:', suggestions)
+                console.log('💡 实时建议:', suggestions)
                 setRealtimeSuggestions(suggestions)
               } catch (error) {
                 console.error('❌ 实时评估失败:', error)
@@ -157,7 +216,7 @@ export default function CameraPage() {
 
   // 停止实时评估
   const stopRealtimeEvaluation = useCallback(() => {
-    console.log('停止实时评估')
+    console.log('⏹️ 停止实时评估')
     if (realtimeTimerRef.current) {
       clearInterval(realtimeTimerRef.current)
       realtimeTimerRef.current = null
@@ -167,7 +226,7 @@ export default function CameraPage() {
 
   // 重新启动实时评估（用于重新拍照后）
   const restartRealtimeEvaluation = useCallback(() => {
-    console.log('=== 重新启动实时评估 ===')
+    console.log('=== 🔄 重新启动实时评估 ===')
 
     if (!isWeApp) {
       console.log('非小程序环境，跳过')
@@ -264,7 +323,7 @@ export default function CameraPage() {
 
   // 拍摄并保存（从实时模式）
   const captureFromRealtime = useCallback(async () => {
-    console.log('=== 拍摄按钮点击 ===')
+    console.log('=== 📸 拍摄按钮点击 ===')
     console.log('isWeApp:', isWeApp)
     console.log('cameraCtxRef.current:', !!cameraCtxRef.current)
     console.log('cameraReady:', cameraReady)
@@ -315,8 +374,9 @@ export default function CameraPage() {
     }
   }, [isWeApp, cameraReady, stopRealtimeEvaluation, analyzePhoto, restartRealtimeEvaluation])
 
-  // 调用相机拍照（H5或备用方案）
-  const takePhoto = useCallback(async () => {
+  // 调用相机拍照（降级方案）
+  const takePhotoFallback = useCallback(async () => {
+    console.log('📸 使用降级方案拍照')
     try {
       const res = await Taro.chooseImage({
         count: 1,
@@ -326,6 +386,7 @@ export default function CameraPage() {
 
       if (res.tempFilePaths && res.tempFilePaths.length > 0) {
         const imagePath = res.tempFilePaths[0]
+        console.log('✅ 拍照成功:', imagePath)
         setCurrentImage(imagePath)
         setShowResult(false)
         setMode('capture')
@@ -347,7 +408,7 @@ export default function CameraPage() {
     setEvaluation(null)
     setShowResult(false)
 
-    if (isWeApp) {
+    if (isWeApp && mode !== 'fallback') {
       setMode('realtime')
       // 延迟重新启动实时评估
       setTimeout(() => {
@@ -356,9 +417,9 @@ export default function CameraPage() {
         }
       }, 500)
     } else {
-      takePhoto()
+      takePhotoFallback()
     }
-  }, [isWeApp, restartRealtimeEvaluation, takePhoto])
+  }, [isWeApp, mode, restartRealtimeEvaluation, takePhotoFallback])
 
   // 保存评估结果
   const saveEvaluation = useCallback(async () => {
@@ -461,14 +522,14 @@ export default function CameraPage() {
                 flash="off"
                 onReady={handleCameraReady}
                 onError={(e) => {
-                  console.error('Camera组件错误:', e)
+                  console.error('❌ Camera组件错误:', e)
                   Taro.showToast({title: 'Camera组件错误', icon: 'none'})
                 }}
                 style={{width: '100%', height: '100%'}}
               />
 
               {/* 实时建议浮层 */}
-              {realtimeSuggestions.length > 0 && (
+              {cameraReady && realtimeSuggestions.length > 0 && (
                 <View className="absolute top-20 left-4 right-4 bg-black/70 rounded-2xl p-4">
                   <View className="flex flex-row items-center mb-2">
                     <View className="i-mdi-eye text-lg text-primary mr-2" />
@@ -486,10 +547,13 @@ export default function CameraPage() {
 
               {/* 相机状态指示 */}
               {!cameraReady && (
-                <View className="absolute top-4 left-4 right-4 bg-primary/80 rounded-xl p-3">
-                  <Text className="text-sm text-white text-center">相机初始化中...</Text>
-                  <Text className="text-xs text-white text-center mt-1">
+                <View className="absolute top-4 left-4 right-4 bg-primary/90 rounded-xl p-4">
+                  <Text className="text-sm text-white text-center font-semibold mb-2">相机初始化中...</Text>
+                  <Text className="text-xs text-white text-center mb-2">
                     环境: {getEnv()} | isWeApp: {isWeApp ? '是' : '否'}
+                  </Text>
+                  <Text className="text-xs text-white/80 text-center leading-relaxed">
+                    如果长时间未就绪，可能是开发者工具不支持Camera组件，请使用真机调试或等待降级方案
                   </Text>
                 </View>
               )}
@@ -497,11 +561,13 @@ export default function CameraPage() {
               {/* 拍摄按钮 */}
               <View className="absolute bottom-8 left-0 right-0 flex flex-col items-center">
                 <View
-                  className="w-20 h-20 bg-white rounded-full border-4 border-primary flex items-center justify-center mb-4"
+                  className={`w-20 h-20 rounded-full border-4 flex items-center justify-center mb-4 ${
+                    cameraReady ? 'bg-white border-primary' : 'bg-gray-400 border-gray-500'
+                  }`}
                   onClick={captureFromRealtime}>
-                  <View className="w-16 h-16 bg-primary rounded-full" />
+                  <View className={`w-16 h-16 rounded-full ${cameraReady ? 'bg-primary' : 'bg-gray-500'}`} />
                 </View>
-                <Text className="text-sm text-white">点击拍摄并保存</Text>
+                <Text className="text-sm text-white">{cameraReady ? '点击拍摄并保存' : '等待相机就绪...'}</Text>
               </View>
             </>
           ) : (
@@ -516,11 +582,47 @@ export default function CameraPage() {
               <Button
                 className="bg-primary text-white py-3 px-8 rounded-xl break-keep text-base"
                 size="default"
-                onClick={takePhoto}>
+                onClick={takePhotoFallback}>
                 调用相机拍照
               </Button>
             </View>
           )}
+        </View>
+      )}
+
+      {/* 降级方案模式 */}
+      {mode === 'fallback' && !currentImage && (
+        <View className="flex flex-col items-center justify-center min-h-screen px-6">
+          <View className="i-mdi-camera text-6xl text-primary mb-4" />
+          <Text className="text-xl text-white mb-2 font-semibold">备用拍照方案</Text>
+          <Text className="text-sm text-muted-foreground mb-6 text-center leading-relaxed">
+            Camera组件在当前环境不可用，使用系统相机拍照功能。拍照后将自动进行评估。
+          </Text>
+          <Button
+            className="bg-primary text-white py-4 px-8 rounded-xl break-keep text-base mb-4"
+            size="default"
+            onClick={takePhotoFallback}>
+            调用相机拍照
+          </Button>
+          <Button
+            className="bg-card text-foreground py-3 px-6 rounded-xl border border-border break-keep text-sm"
+            size="default"
+            onClick={() => {
+              setMode('realtime')
+              setInitTimeout(false)
+            }}>
+            返回实时预览
+          </Button>
+          <View className="mt-8 bg-muted/30 rounded-xl p-4">
+            <View className="flex flex-row items-start">
+              <View className="i-mdi-information text-lg text-primary mr-2 mt-0.5" />
+              <View className="flex-1">
+                <Text className="text-xs text-muted-foreground leading-relaxed">
+                  提示：Camera组件需要真机调试才能完整体验实时预览功能。在微信开发者工具中可能无法正常工作。
+                </Text>
+              </View>
+            </View>
+          </View>
         </View>
       )}
 

@@ -9,6 +9,11 @@ const pages = [
 //  To fully leverage TypeScript's type safety and ensure its correctness, always enclose the configuration object within the global defineAppConfig helper function.
 export default defineAppConfig({
   pages,
+  permission: {
+    'scope.camera': {
+      desc: '需要使用您的摄像头进行拍照和实时预览'
+    }
+  },
   tabBar: {
     color: '#8B9AAD',
     selectedColor: '#1E5EFF',
