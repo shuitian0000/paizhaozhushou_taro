@@ -1,297 +1,332 @@
-import {Camera, Text, View} from '@tarojs/components'
+import {Button, Image, ScrollView, Text, View} from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import {useCallback, useEffect, useRef, useState} from 'react'
-import {supabase} from '@/client/supabase'
 import {createEvaluation} from '@/db/api'
-import {imageToBase64} from '@/utils/ai'
+import type {LocalEvaluationResult} from '@/utils/localEvaluation'
+import {evaluatePhotoLocally} from '@/utils/localEvaluation'
 import {uploadFile} from '@/utils/upload'
 
 export default function CameraPage() {
-  const [devicePosition, setDevicePosition] = useState<'back' | 'front'>('back')
-  const [flash, setFlash] = useState<'off' | 'on'>('off')
-  const [analyzing, setAnalyzing] = useState(false)
-  const [score, setScore] = useState<number | null>(null)
-  const [suggestions, setSuggestions] = useState<string[]>([])
-  const [lastAnalysisTime, setLastAnalysisTime] = useState(0)
-  const cameraCtxRef = useRef<any>(null)
+  const [currentImage, setCurrentImage] = useState<string | null>(null)
+  const [_analyzing, setAnalyzing] = useState(false)
+  const [evaluation, setEvaluation] = useState<LocalEvaluationResult | null>(null)
+  const [showResult, setShowResult] = useState(false)
   const analyzeTimerRef = useRef<any>(null)
 
-  // 实时分析相机画面
-  const analyzeCurrentFrame = useCallback(async () => {
-    if (analyzing) return
-
-    const now = Date.now()
-    // 限制分析频率，至少间隔5秒
-    if (now - lastAnalysisTime < 5000) return
-
-    setAnalyzing(true)
-    setLastAnalysisTime(now)
-
-    try {
-      const ctx = cameraCtxRef.current
-      if (!ctx) {
-        setAnalyzing(false)
-        return
-      }
-
-      // 拍摄当前画面（不保存，仅用于分析）
-      ctx.takePhoto({
-        quality: 'normal',
-        success: async (res) => {
-          try {
-            // 转换为Base64
-            const base64Image = await imageToBase64(res.tempImagePath)
-
-            // 调用Edge Function分析
-            const {data, error} = await supabase.functions.invoke('analyze-photo', {
-              body: JSON.stringify({
-                imageBase64: base64Image,
-                evaluationType: 'realtime'
-              }),
-              headers: {'Content-Type': 'application/json'}
-            })
-
-            if (error) {
-              console.error('实时分析失败:', error)
-              setAnalyzing(false)
-              return
-            }
-
-            // 更新实时评分和建议
-            setScore(data.total_score || 70)
-
-            const suggestionList: string[] = []
-            if (data.suggestions?.composition) {
-              suggestionList.push(data.suggestions.composition)
-            }
-            if (data.suggestions?.angle) {
-              suggestionList.push(data.suggestions.angle)
-            }
-            if (data.suggestions?.pose && data.suggestions.pose !== '无人物') {
-              suggestionList.push(data.suggestions.pose)
-            }
-
-            setSuggestions(suggestionList.slice(0, 3))
-            setAnalyzing(false)
-          } catch (error) {
-            console.error('分析处理失败:', error)
-            setAnalyzing(false)
-          }
-        },
-        fail: (error) => {
-          console.error('截取画面失败:', error)
-          setAnalyzing(false)
-        }
-      })
-    } catch (error) {
-      console.error('实时分析出错:', error)
-      setAnalyzing(false)
-    }
-  }, [analyzing, lastAnalysisTime])
-
-  // 启动实时分析
-  const startRealtimeAnalysis = useCallback(() => {
-    // 每8秒自动分析一次
-    analyzeTimerRef.current = setInterval(() => {
-      analyzeCurrentFrame()
-    }, 8000)
-
-    // 首次立即分析
-    setTimeout(() => {
-      analyzeCurrentFrame()
-    }, 2000)
-  }, [analyzeCurrentFrame])
-
-  // 初始化相机上下文
+  // 清理定时器
   useEffect(() => {
-    cameraCtxRef.current = Taro.createCameraContext()
-
-    // 启动定时分析
-    startRealtimeAnalysis()
-
     return () => {
       if (analyzeTimerRef.current) {
-        clearInterval(analyzeTimerRef.current)
+        clearTimeout(analyzeTimerRef.current)
       }
     }
-  }, [startRealtimeAnalysis])
-
-  // 切换摄像头
-  const toggleCamera = useCallback(() => {
-    setDevicePosition((prev) => (prev === 'back' ? 'front' : 'back'))
   }, [])
 
-  // 切换闪光灯
-  const toggleFlash = useCallback(() => {
-    setFlash((prev) => (prev === 'off' ? 'on' : 'off'))
-  }, [])
+  // 本地分析照片
+  const analyzePhoto = useCallback(async (imagePath: string) => {
+    setAnalyzing(true)
+    Taro.showLoading({title: '分析中...'})
 
-  // 拍照并保存评估
-  const takePhotoAndSave = useCallback(async () => {
     try {
-      Taro.showLoading({title: '拍摄中...'})
+      // 使用本地算法评估
+      const result = await evaluatePhotoLocally(imagePath)
+      setEvaluation(result)
+      setShowResult(true)
+      Taro.hideLoading()
+      setAnalyzing(false)
+    } catch (error) {
+      console.error('分析失败:', error)
+      Taro.hideLoading()
+      Taro.showToast({title: '分析失败，请重试', icon: 'none'})
+      setAnalyzing(false)
+    }
+  }, [])
 
-      const ctx = cameraCtxRef.current
-      if (!ctx) {
+  // 调用相机拍照
+  const takePhoto = useCallback(async () => {
+    try {
+      const res = await Taro.chooseImage({
+        count: 1,
+        sizeType: ['compressed'],
+        sourceType: ['camera'] // 只允许拍照
+      })
+
+      if (res.tempFilePaths && res.tempFilePaths.length > 0) {
+        const imagePath = res.tempFilePaths[0]
+        setCurrentImage(imagePath)
+        setShowResult(false)
+
+        // 自动开始分析
+        analyzePhoto(imagePath)
+      }
+    } catch (error) {
+      console.error('拍照失败:', error)
+      Taro.showToast({title: '拍照失败', icon: 'none'})
+    }
+  }, [analyzePhoto])
+
+  // 重新拍照
+  const retakePhoto = useCallback(() => {
+    setCurrentImage(null)
+    setEvaluation(null)
+    setShowResult(false)
+    takePhoto()
+  }, [takePhoto])
+
+  // 保存评估结果
+  const saveEvaluation = useCallback(async () => {
+    if (!currentImage || !evaluation) {
+      Taro.showToast({title: '没有可保存的评估', icon: 'none'})
+      return
+    }
+
+    try {
+      Taro.showLoading({title: '保存中...'})
+
+      // 上传照片
+      const uploadResult = await uploadFile({
+        path: currentImage,
+        size: 0,
+        name: `realtime_${Date.now()}.jpg`
+      })
+
+      if (!uploadResult.success || !uploadResult.url) {
         Taro.hideLoading()
-        Taro.showToast({title: '相机未就绪', icon: 'none'})
+        Taro.showToast({title: '照片保存失败', icon: 'none'})
         return
       }
 
-      ctx.takePhoto({
-        quality: 'high',
-        success: async (res) => {
-          const tempImagePath = res.tempImagePath
-
-          Taro.showLoading({title: '分析中...'})
-
-          try {
-            // 转换为Base64
-            const base64Image = await imageToBase64(tempImagePath)
-
-            // 调用Edge Function分析
-            const {data, error} = await supabase.functions.invoke('analyze-photo', {
-              body: JSON.stringify({
-                imageBase64: base64Image,
-                evaluationType: 'realtime'
-              }),
-              headers: {'Content-Type': 'application/json'}
-            })
-
-            if (error) {
-              const errorMsg = await error?.context?.text()
-              console.error('分析失败:', errorMsg || error?.message)
-              Taro.hideLoading()
-              Taro.showToast({title: '分析失败，请重试', icon: 'none'})
-              return
-            }
-
-            // 上传照片
-            const uploadResult = await uploadFile({
-              path: tempImagePath,
-              size: 0,
-              name: `realtime_${Date.now()}.jpg`
-            })
-
-            if (!uploadResult.success || !uploadResult.url) {
-              Taro.hideLoading()
-              Taro.showToast({title: '照片保存失败', icon: 'none'})
-              return
-            }
-
-            // 保存评估记录
-            const evaluation = await createEvaluation({
-              photo_url: uploadResult.url,
-              evaluation_type: 'realtime',
-              total_score: data.total_score || 70,
-              composition_score: data.composition_score,
-              pose_score: data.pose_score,
-              angle_score: data.angle_score,
-              distance_score: data.distance_score,
-              height_score: data.height_score,
-              suggestions: data.suggestions,
-              scene_type: data.scene_type
-            })
-
-            Taro.hideLoading()
-
-            if (evaluation) {
-              // 跳转到结果页面
-              Taro.navigateTo({
-                url: `/pages/result/index?id=${evaluation.id}`
-              })
-            } else {
-              Taro.showToast({title: '保存失败', icon: 'none'})
-            }
-          } catch (error) {
-            console.error('处理照片失败:', error)
-            Taro.hideLoading()
-            Taro.showToast({title: '处理失败，请重试', icon: 'none'})
-          }
-        },
-        fail: (error) => {
-          console.error('拍照失败:', error)
-          Taro.hideLoading()
-          Taro.showToast({title: '拍照失败', icon: 'none'})
-        }
+      // 保存评估记录
+      const record = await createEvaluation({
+        photo_url: uploadResult.url,
+        evaluation_type: 'realtime',
+        total_score: evaluation.total_score,
+        composition_score: evaluation.composition_score,
+        pose_score: evaluation.pose_score ?? undefined,
+        angle_score: evaluation.angle_score,
+        distance_score: evaluation.distance_score,
+        height_score: evaluation.height_score,
+        suggestions: evaluation.suggestions,
+        scene_type: evaluation.scene_type as 'portrait' | 'landscape' | 'group' | 'other' | undefined
       })
-    } catch (error) {
-      console.error('拍照出错:', error)
+
       Taro.hideLoading()
-      Taro.showToast({title: '拍照失败', icon: 'none'})
+
+      if (record) {
+        Taro.showToast({title: '保存成功', icon: 'success'})
+        // 跳转到结果页面
+        setTimeout(() => {
+          Taro.navigateTo({
+            url: `/pages/result/index?id=${record.id}`
+          })
+        }, 1500)
+      } else {
+        Taro.showToast({title: '保存失败', icon: 'none'})
+      }
+    } catch (error) {
+      console.error('保存失败:', error)
+      Taro.hideLoading()
+      Taro.showToast({title: '保存失败，请重试', icon: 'none'})
     }
-  }, [])
+  }, [currentImage, evaluation])
+
+  // 获取评分颜色
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return 'text-green-500'
+    if (score >= 60) return 'text-primary'
+    return 'text-orange-500'
+  }
 
   return (
-    <View className="relative w-full h-screen bg-black">
-      {/* 相机组件 */}
-      <Camera devicePosition={devicePosition} flash={flash} className="w-full h-full">
-        {/* 顶部控制栏 */}
-        <View className="absolute top-0 left-0 right-0 z-10">
-          <View className="flex flex-row justify-between items-center px-6 pt-12 pb-4 bg-gradient-to-b from-black/60 to-transparent">
-            <View className="flex flex-row items-center" onClick={() => Taro.navigateBack()}>
-              <View className="i-mdi-arrow-left text-2xl text-white" />
-            </View>
-            <Text className="text-lg font-semibold text-white">拍照助手</Text>
-            <View className="flex flex-row items-center gap-4">
-              <View
-                className={`i-mdi-flash${flash === 'on' ? '' : '-off'} text-2xl text-white`}
-                onClick={toggleFlash}
-              />
-              <View className="i-mdi-camera-flip text-2xl text-white" onClick={toggleCamera} />
-            </View>
+    <View className="min-h-screen bg-gradient-dark">
+      <ScrollView scrollY style={{height: '100vh', background: 'transparent'}}>
+        <View className="px-6 py-8">
+          {/* 标题 */}
+          <View className="mb-6">
+            <Text className="text-2xl font-bold text-white mb-2">拍照助手</Text>
+            <Text className="text-sm text-muted-foreground">拍摄照片，获取实时评分和建议</Text>
           </View>
-        </View>
 
-        {/* 实时评分显示 */}
-        {score !== null && (
-          <View className="absolute top-32 left-6 right-6 z-10">
-            <View className="bg-black/70 rounded-2xl p-4 backdrop-blur">
-              <View className="flex flex-row items-center justify-between mb-2">
-                <Text className="text-sm text-white/80">{analyzing ? '分析中...' : '实时评分'}</Text>
+          {/* 图片预览区域 */}
+          {currentImage ? (
+            <View className="mb-6">
+              <Image
+                src={currentImage}
+                mode="aspectFit"
+                className="w-full rounded-2xl bg-card"
+                style={{height: '400px'}}
+              />
+            </View>
+          ) : (
+            <View
+              className="w-full bg-card rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center mb-6"
+              style={{height: '400px'}}
+              onClick={takePhoto}>
+              <View className="i-mdi-camera text-6xl text-muted-foreground mb-4" />
+              <Text className="text-base text-foreground mb-2">点击调用相机拍照</Text>
+              <Text className="text-sm text-muted-foreground">拍照后立即获得评分和建议</Text>
+            </View>
+          )}
+
+          {/* 评估结果 */}
+          {showResult && evaluation && (
+            <View className="bg-card rounded-2xl p-6 mb-6 shadow-card">
+              {/* 总分 */}
+              <View className="flex flex-col items-center mb-6 pb-6 border-b border-border">
+                <Text className="text-sm text-muted-foreground mb-2">综合评分</Text>
                 <View className="flex flex-row items-center">
-                  <Text className="text-3xl font-bold text-primary mr-1">{score}</Text>
-                  <Text className="text-sm text-white/80">分</Text>
+                  <Text className={`text-5xl font-bold ${getScoreColor(evaluation.total_score)} mr-2`}>
+                    {evaluation.total_score}
+                  </Text>
+                  <Text className="text-lg text-muted-foreground">分</Text>
                 </View>
               </View>
-              {suggestions.length > 0 && (
-                <View className="mt-2 pt-2 border-t border-white/20">
-                  <Text className="text-xs text-white/70 mb-1">建议：</Text>
-                  {suggestions.map((suggestion, index) => (
-                    <Text key={index} className="text-xs text-white/90 mb-1">
-                      • {suggestion}
-                    </Text>
-                  ))}
+
+              {/* 各项得分 */}
+              <View className="space-y-4 mb-6">
+                <View className="flex flex-row items-center justify-between">
+                  <Text className="text-sm text-foreground">构图</Text>
+                  <View className="flex flex-row items-center">
+                    <View className="w-32 h-2 bg-muted rounded-full overflow-hidden mr-3">
+                      <View
+                        className="h-full bg-primary rounded-full"
+                        style={{
+                          width: `${(evaluation.composition_score / 30) * 100}%`
+                        }}
+                      />
+                    </View>
+                    <Text className="text-sm text-foreground w-12 text-right">{evaluation.composition_score}/30</Text>
+                  </View>
+                </View>
+
+                <View className="flex flex-row items-center justify-between">
+                  <Text className="text-sm text-foreground">角度</Text>
+                  <View className="flex flex-row items-center">
+                    <View className="w-32 h-2 bg-muted rounded-full overflow-hidden mr-3">
+                      <View
+                        className="h-full bg-secondary rounded-full"
+                        style={{
+                          width: `${(evaluation.angle_score / 20) * 100}%`
+                        }}
+                      />
+                    </View>
+                    <Text className="text-sm text-foreground w-12 text-right">{evaluation.angle_score}/20</Text>
+                  </View>
+                </View>
+
+                <View className="flex flex-row items-center justify-between">
+                  <Text className="text-sm text-foreground">距离</Text>
+                  <View className="flex flex-row items-center">
+                    <View className="w-32 h-2 bg-muted rounded-full overflow-hidden mr-3">
+                      <View
+                        className="h-full bg-accent rounded-full"
+                        style={{
+                          width: `${(evaluation.distance_score / 10) * 100}%`
+                        }}
+                      />
+                    </View>
+                    <Text className="text-sm text-foreground w-12 text-right">{evaluation.distance_score}/10</Text>
+                  </View>
+                </View>
+
+                <View className="flex flex-row items-center justify-between">
+                  <Text className="text-sm text-foreground">高度</Text>
+                  <View className="flex flex-row items-center">
+                    <View className="w-32 h-2 bg-muted rounded-full overflow-hidden mr-3">
+                      <View
+                        className="h-full bg-primary rounded-full"
+                        style={{
+                          width: `${(evaluation.height_score / 10) * 100}%`
+                        }}
+                      />
+                    </View>
+                    <Text className="text-sm text-foreground w-12 text-right">{evaluation.height_score}/10</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* 改进建议 */}
+              {Object.keys(evaluation.suggestions).length > 0 && (
+                <View className="bg-muted/50 rounded-xl p-4">
+                  <View className="flex flex-row items-center mb-3">
+                    <View className="i-mdi-lightbulb-on text-xl text-primary mr-2" />
+                    <Text className="text-sm font-semibold text-foreground">改进建议</Text>
+                  </View>
+                  <View className="space-y-2">
+                    {evaluation.suggestions.composition && (
+                      <Text className="text-sm text-foreground leading-relaxed">
+                        • {evaluation.suggestions.composition}
+                      </Text>
+                    )}
+                    {evaluation.suggestions.angle && (
+                      <Text className="text-sm text-foreground leading-relaxed">• {evaluation.suggestions.angle}</Text>
+                    )}
+                    {evaluation.suggestions.distance && (
+                      <Text className="text-sm text-foreground leading-relaxed">
+                        • {evaluation.suggestions.distance}
+                      </Text>
+                    )}
+                    {evaluation.suggestions.height && (
+                      <Text className="text-sm text-foreground leading-relaxed">• {evaluation.suggestions.height}</Text>
+                    )}
+                  </View>
                 </View>
               )}
             </View>
+          )}
+
+          {/* 操作按钮 */}
+          <View className="space-y-3">
+            {currentImage ? (
+              <>
+                <Button
+                  className="w-full bg-primary text-white py-4 rounded-xl break-keep text-base"
+                  size="default"
+                  onClick={retakePhoto}>
+                  重新拍照
+                </Button>
+                {showResult && (
+                  <Button
+                    className="w-full bg-secondary text-white py-4 rounded-xl break-keep text-base"
+                    size="default"
+                    onClick={saveEvaluation}>
+                    保存评估结果
+                  </Button>
+                )}
+              </>
+            ) : (
+              <Button
+                className="w-full bg-primary text-white py-4 rounded-xl break-keep text-base"
+                size="default"
+                onClick={takePhoto}>
+                开始拍照
+              </Button>
+            )}
+
+            <Button
+              className="w-full bg-card text-foreground py-4 rounded-xl border border-border break-keep text-base"
+              size="default"
+              onClick={() => Taro.navigateBack()}>
+              返回
+            </Button>
           </View>
-        )}
 
-        {/* 构图辅助线 */}
-        <View className="absolute inset-0 z-5 pointer-events-none">
-          {/* 三分法辅助线 */}
-          <View className="absolute left-1/3 top-0 bottom-0 w-px bg-white/20" />
-          <View className="absolute left-2/3 top-0 bottom-0 w-px bg-white/20" />
-          <View className="absolute top-1/3 left-0 right-0 h-px bg-white/20" />
-          <View className="absolute top-2/3 left-0 right-0 h-px bg-white/20" />
-        </View>
-
-        {/* 底部拍照按钮 */}
-        <View className="absolute bottom-0 left-0 right-0 z-10">
-          <View className="flex flex-col items-center px-6 pb-12 pt-6 bg-gradient-to-t from-black/60 to-transparent">
-            <View className="flex flex-row items-center justify-center w-full">
-              <View
-                className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center"
-                onClick={takePhotoAndSave}>
-                <View className="w-16 h-16 rounded-full bg-white" />
+          {/* 提示信息 */}
+          <View className="mt-6 bg-muted/30 rounded-xl p-4">
+            <View className="flex flex-row items-start">
+              <View className="i-mdi-information text-lg text-primary mr-2 mt-0.5" />
+              <View className="flex-1">
+                <Text className="text-xs text-muted-foreground leading-relaxed">
+                  本功能使用小程序本地算法进行实时评估，无需上传照片到服务器。评估基于构图规则、亮度对比度等指标，为您提供即时的摄影建议。
+                </Text>
               </View>
             </View>
-            <Text className="text-sm text-white/80 mt-4 text-center">点击拍摄并保存评估</Text>
-            <Text className="text-xs text-white/60 mt-1 text-center">实时评分每8秒自动更新</Text>
           </View>
+
+          {/* 底部间距 */}
+          <View className="h-20" />
         </View>
-      </Camera>
+      </ScrollView>
     </View>
   )
 }
