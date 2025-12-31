@@ -163,12 +163,20 @@ export default function UploadPage() {
                 </Button>
               </>
             ) : (
-              <Button
-                className="w-full bg-gradient-primary text-white py-4 rounded-xl break-keep text-base"
-                size="default"
-                onClick={handleChooseImage}>
-                选择照片
-              </Button>
+              <>
+                <Button
+                  className="w-full bg-gradient-primary text-white py-4 rounded-xl break-keep text-base"
+                  size="default"
+                  onClick={handleChooseImage}>
+                  选择照片
+                </Button>
+                <Button
+                  className="w-full bg-card text-foreground py-4 rounded-xl border border-border break-keep text-base"
+                  size="default"
+                  onClick={() => Taro.navigateBack()}>
+                  返回
+                </Button>
+              </>
             )}
           </View>
 

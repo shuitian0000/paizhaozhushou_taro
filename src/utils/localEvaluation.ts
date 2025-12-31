@@ -156,6 +156,8 @@ function analyzeCenterFocus(imageData: ImageData): number {
 export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEvaluationResult> {
   return new Promise((resolve, reject) => {
     try {
+      console.log('开始本地评估，图片路径:', imagePath)
+
       // 创建canvas来分析图片
       const canvas = Taro.createOffscreenCanvas({
         type: '2d',
@@ -165,27 +167,39 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
       const ctx = canvas.getContext('2d') as any
 
       if (!ctx) {
+        console.error('无法创建Canvas上下文')
         reject(new Error('无法创建Canvas上下文'))
         return
       }
 
+      console.log('Canvas创建成功')
+
       // 加载图片
       const img = canvas.createImage()
+
       img.onload = () => {
         try {
+          console.log('图片加载成功，尺寸:', img.width, 'x', img.height)
+
           // 绘制图片到canvas
           canvas.width = Math.min(img.width, 300)
           canvas.height = Math.min(img.height, 400)
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
 
+          console.log('图片绘制成功')
+
           // 获取图片数据
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+
+          console.log('获取图片数据成功，像素数:', imageData.data.length)
 
           // 分析各项指标
           const brightness = analyzeBrightness(imageData)
           const contrast = analyzeContrast(imageData)
           const ruleOfThirds = analyzeRuleOfThirds(imageData)
           const centerFocus = analyzeCenterFocus(imageData)
+
+          console.log('图片分析完成:', {brightness, contrast, ruleOfThirds, centerFocus})
 
           // 计算各维度得分
           // 构图得分 (30分)
@@ -236,6 +250,8 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
           // 场景类型判断（简化版）
           const sceneType = 'other'
 
+          console.log('评估完成，总分:', totalScore)
+
           resolve({
             total_score: Math.min(totalScore, 100),
             composition_score: compositionScore,
@@ -252,13 +268,15 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
         }
       }
 
-      img.onerror = () => {
+      img.onerror = (err) => {
+        console.error('图片加载失败:', err, '路径:', imagePath)
         reject(new Error('图片加载失败'))
       }
 
+      console.log('设置图片源:', imagePath)
       img.src = imagePath
     } catch (error) {
-      console.error('本地评估出错:', error)
+      console.error('本地评估异常:', error)
       reject(error)
     }
   })
