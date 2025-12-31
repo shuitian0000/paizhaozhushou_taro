@@ -1,5 +1,5 @@
 import {Button, Camera, Image, ScrollView, Text, View} from '@tarojs/components'
-import Taro, {getEnv, useDidShow} from '@tarojs/taro'
+import Taro, {getEnv} from '@tarojs/taro'
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {createEvaluation} from '@/db/api'
 import type {LocalEvaluationResult} from '@/utils/localEvaluation'
@@ -13,14 +13,18 @@ export default function CameraPage() {
   const [evaluation, setEvaluation] = useState<LocalEvaluationResult | null>(null)
   const [showResult, setShowResult] = useState(false)
   const [realtimeSuggestions, setRealtimeSuggestions] = useState<string[]>([])
+  const [cameraReady, setCameraReady] = useState(false)
   const analyzeTimerRef = useRef<any>(null)
   const realtimeTimerRef = useRef<any>(null)
   const cameraCtxRef = useRef<any>(null)
   const isWeApp = getEnv() === 'WEAPP'
 
+  console.log('Camera页面渲染，环境:', isWeApp ? '小程序' : 'H5', 'mode:', mode)
+
   // 清理定时器
   useEffect(() => {
     return () => {
+      console.log('组件卸载，清理定时器')
       if (analyzeTimerRef.current) {
         clearTimeout(analyzeTimerRef.current)
       }
@@ -30,29 +34,35 @@ export default function CameraPage() {
     }
   }, [])
 
-  // Camera组件准备完成
-  const handleCameraReady = useCallback(() => {
-    console.log('Camera准备完成')
-    if (isWeApp) {
-      cameraCtxRef.current = Taro.createCameraContext()
-      console.log('CameraContext创建成功')
-    }
-  }, [isWeApp])
-
   // 开始实时评估
   const startRealtimeEvaluation = useCallback(() => {
-    if (!isWeApp || !cameraCtxRef.current) {
-      console.log('实时评估仅在小程序中可用')
+    console.log('尝试开始实时评估，isWeApp:', isWeApp, 'cameraCtxRef:', !!cameraCtxRef.current)
+
+    if (!isWeApp) {
+      console.log('非小程序环境，跳过实时评估')
+      return
+    }
+
+    if (!cameraCtxRef.current) {
+      console.error('CameraContext未创建，无法开始实时评估')
+      Taro.showToast({title: '相机初始化中...', icon: 'none', duration: 1500})
       return
     }
 
     console.log('开始实时评估')
-    setMode('realtime')
     setRealtimeSuggestions(['正在分析镜头...'])
+
+    // 清除旧的定时器
+    if (realtimeTimerRef.current) {
+      clearInterval(realtimeTimerRef.current)
+    }
 
     // 每2秒采集一次镜头
     realtimeTimerRef.current = setInterval(() => {
-      if (!cameraCtxRef.current) return
+      if (!cameraCtxRef.current) {
+        console.error('CameraContext丢失')
+        return
+      }
 
       console.log('采集镜头...')
       cameraCtxRef.current.takePhoto({
@@ -62,6 +72,7 @@ export default function CameraPage() {
           try {
             // 本地评估
             const result = await evaluatePhotoLocally(res.tempImagePath)
+            console.log('评估结果:', result)
 
             // 生成实时建议
             const suggestions: string[] = []
@@ -96,17 +107,22 @@ export default function CameraPage() {
             setRealtimeSuggestions(suggestions)
           } catch (error) {
             console.error('实时评估失败:', error)
+            setRealtimeSuggestions(['评估失败，继续监控...'])
           }
         },
         fail: (err: any) => {
           console.error('镜头采集失败:', err)
+          setRealtimeSuggestions(['采集失败，继续监控...'])
         }
       })
     }, 2000)
+
+    console.log('实时评估定时器已启动，ID:', realtimeTimerRef.current)
   }, [isWeApp])
 
   // 停止实时评估
   const stopRealtimeEvaluation = useCallback(() => {
+    console.log('停止实时评估')
     if (realtimeTimerRef.current) {
       clearInterval(realtimeTimerRef.current)
       realtimeTimerRef.current = null
@@ -114,22 +130,26 @@ export default function CameraPage() {
     setRealtimeSuggestions([])
   }, [])
 
-  // 页面显示时开始实时评估
-  useDidShow(() => {
-    if (isWeApp && mode === 'realtime' && !currentImage) {
-      // 延迟启动，确保Camera组件已准备好
-      setTimeout(() => {
-        startRealtimeEvaluation()
-      }, 1000)
-    }
-  })
+  // Camera组件准备完成
+  const handleCameraReady = useCallback(() => {
+    console.log('Camera组件准备完成')
+    if (isWeApp) {
+      try {
+        cameraCtxRef.current = Taro.createCameraContext()
+        console.log('CameraContext创建成功:', !!cameraCtxRef.current)
+        setCameraReady(true)
 
-  // 页面隐藏时停止实时评估
-  useEffect(() => {
-    return () => {
-      stopRealtimeEvaluation()
+        // Camera准备好后，延迟500ms启动实时评估
+        setTimeout(() => {
+          console.log('延迟后启动实时评估')
+          startRealtimeEvaluation()
+        }, 500)
+      } catch (error) {
+        console.error('创建CameraContext失败:', error)
+        Taro.showToast({title: '相机初始化失败', icon: 'none'})
+      }
     }
-  }, [stopRealtimeEvaluation])
+  }, [isWeApp, startRealtimeEvaluation])
 
   // 本地分析照片
   const analyzePhoto = useCallback(async (imagePath: string) => {
@@ -153,8 +173,16 @@ export default function CameraPage() {
 
   // 拍摄并保存（从实时模式）
   const captureFromRealtime = useCallback(async () => {
-    if (!isWeApp || !cameraCtxRef.current) {
-      Taro.showToast({title: '相机未就绪', icon: 'none'})
+    console.log('拍摄按钮点击，isWeApp:', isWeApp, 'cameraCtxRef:', !!cameraCtxRef.current, 'cameraReady:', cameraReady)
+
+    if (!isWeApp) {
+      Taro.showToast({title: '请在小程序中使用', icon: 'none'})
+      return
+    }
+
+    if (!cameraCtxRef.current) {
+      console.error('CameraContext未创建')
+      Taro.showToast({title: '相机未就绪，请稍候重试', icon: 'none'})
       return
     }
 
@@ -163,24 +191,35 @@ export default function CameraPage() {
 
     Taro.showLoading({title: '拍摄中...'})
 
-    cameraCtxRef.current.takePhoto({
-      quality: 'high',
-      success: async (res: any) => {
-        Taro.hideLoading()
-        console.log('拍摄成功:', res.tempImagePath)
-        setCurrentImage(res.tempImagePath)
-        setMode('capture')
+    try {
+      cameraCtxRef.current.takePhoto({
+        quality: 'high',
+        success: async (res: any) => {
+          Taro.hideLoading()
+          console.log('拍摄成功:', res.tempImagePath)
+          setCurrentImage(res.tempImagePath)
+          setMode('capture')
 
-        // 自动开始分析
-        analyzePhoto(res.tempImagePath)
-      },
-      fail: (err: any) => {
-        Taro.hideLoading()
-        console.error('拍摄失败:', err)
-        Taro.showToast({title: '拍摄失败', icon: 'none'})
-      }
-    })
-  }, [isWeApp, stopRealtimeEvaluation, analyzePhoto])
+          // 自动开始分析
+          analyzePhoto(res.tempImagePath)
+        },
+        fail: (err: any) => {
+          Taro.hideLoading()
+          console.error('拍摄失败:', err)
+          Taro.showToast({title: '拍摄失败，请重试', icon: 'none'})
+
+          // 重新启动实时评估
+          setTimeout(() => {
+            startRealtimeEvaluation()
+          }, 1000)
+        }
+      })
+    } catch (error) {
+      Taro.hideLoading()
+      console.error('拍摄异常:', error)
+      Taro.showToast({title: '拍摄异常', icon: 'none'})
+    }
+  }, [isWeApp, cameraReady, stopRealtimeEvaluation, analyzePhoto, startRealtimeEvaluation])
 
   // 调用相机拍照（H5或备用方案）
   const takePhoto = useCallback(async () => {
@@ -216,8 +255,11 @@ export default function CameraPage() {
 
     if (isWeApp) {
       setMode('realtime')
+      // 延迟重新启动实时评估
       setTimeout(() => {
-        startRealtimeEvaluation()
+        if (cameraCtxRef.current) {
+          startRealtimeEvaluation()
+        }
       }, 500)
     } else {
       takePhoto()
@@ -344,14 +386,20 @@ export default function CameraPage() {
                 </View>
               )}
 
+              {/* 相机状态指示 */}
+              {!cameraReady && (
+                <View className="absolute top-4 left-4 right-4 bg-primary/80 rounded-xl p-3">
+                  <Text className="text-sm text-white text-center">相机初始化中...</Text>
+                </View>
+              )}
+
               {/* 拍摄按钮 */}
               <View className="absolute bottom-8 left-0 right-0 flex flex-col items-center">
-                <Button
+                <View
                   className="w-20 h-20 bg-white rounded-full border-4 border-primary flex items-center justify-center mb-4"
-                  size="default"
                   onClick={captureFromRealtime}>
                   <View className="w-16 h-16 bg-primary rounded-full" />
-                </Button>
+                </View>
                 <Text className="text-sm text-white">点击拍摄并保存</Text>
               </View>
             </>
