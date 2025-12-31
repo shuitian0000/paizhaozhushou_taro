@@ -92,7 +92,7 @@ export default function UploadPage() {
 
       if (evaluation) {
         // 跳转到结果页面
-        Taro.redirectTo({
+        Taro.navigateTo({
           url: `/pages/result/index?id=${evaluation.id}`
         })
       } else {

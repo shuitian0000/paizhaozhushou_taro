@@ -1,5 +1,5 @@
 import {Button, Image, ScrollView, Text, View} from '@tarojs/components'
-import Taro, {useDidShow} from '@tarojs/taro'
+import Taro, {useDidShow, useRouter} from '@tarojs/taro'
 import {useCallback, useState} from 'react'
 import {getEvaluationById} from '@/db/api'
 import type {PhotoEvaluation} from '@/db/types'
@@ -7,12 +7,10 @@ import type {PhotoEvaluation} from '@/db/types'
 export default function ResultPage() {
   const [evaluation, setEvaluation] = useState<PhotoEvaluation | null>(null)
   const [loading, setLoading] = useState(true)
+  const router = useRouter()
 
   const loadEvaluation = useCallback(async () => {
-    const pages = Taro.getCurrentPages()
-    const currentPage = pages[pages.length - 1]
-    const options = currentPage.options || {}
-    const id = options.id
+    const id = router.params.id
 
     if (!id) {
       Taro.showToast({title: '参数错误', icon: 'none'})
@@ -31,7 +29,7 @@ export default function ResultPage() {
     } else {
       Taro.showToast({title: '加载失败', icon: 'none'})
     }
-  }, [])
+  }, [router.params.id])
 
   useDidShow(() => {
     loadEvaluation()
