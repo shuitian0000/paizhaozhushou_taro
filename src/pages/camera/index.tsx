@@ -1,4 +1,4 @@
-import {Button, Image, ScrollView, Text, View} from '@tarojs/components'
+import {Button, Camera, Image, ScrollView, Text, View} from '@tarojs/components'
 import Taro, {useDidShow} from '@tarojs/taro'
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {createEvaluation} from '@/db/api'
@@ -7,29 +7,30 @@ import {evaluatePhotoLocally} from '@/utils/localEvaluation'
 import {uploadFile} from '@/utils/upload'
 
 export default function CameraPage() {
-  const [mode, setMode] = useState<'idle' | 'evaluating' | 'captured'>('idle')
+  const [mode, setMode] = useState<'preview' | 'captured'>('preview')
   const [currentImage, setCurrentImage] = useState<string | null>(null)
   const [evaluation, setEvaluation] = useState<LocalEvaluationResult | null>(null)
   const [realtimeSuggestions, setRealtimeSuggestions] = useState<string[]>([])
   const [evaluationCount, setEvaluationCount] = useState(0)
+  const [isEvaluating, setIsEvaluating] = useState(false)
+  const cameraCtxRef = useRef<any>(null)
   const evaluationTimerRef = useRef<any>(null)
-  const isEvaluatingRef = useRef(false)
+  const isProcessingRef = useRef(false)
+  const retryCountRef = useRef(0)
 
   console.log('📱 拍照助手页面')
   console.log('mode:', mode)
+  console.log('isEvaluating:', isEvaluating)
   console.log('evaluationCount:', evaluationCount)
 
-  // 页面显示时重置状态
+  // 页面显示时初始化相机
   useDidShow(() => {
-    console.log('📱 页面显示')
-    // 如果之前在评估中，停止评估
-    if (mode === 'evaluating') {
-      if (evaluationTimerRef.current) {
-        clearInterval(evaluationTimerRef.current)
-        evaluationTimerRef.current = null
-      }
-      setMode('idle')
-    }
+    console.log('📱 页面显示，初始化相机')
+
+    // 延迟1秒后初始化CameraContext
+    setTimeout(() => {
+      initCamera()
+    }, 1000)
   })
 
   // 清理定时器
@@ -42,87 +43,122 @@ export default function CameraPage() {
     }
   }, [])
 
+  // 初始化相机
+  const initCamera = useCallback(() => {
+    console.log('=== 🎥 初始化相机 ===')
+
+    try {
+      // 直接创建CameraContext，不等待onReady
+      const ctx = Taro.createCameraContext()
+      console.log('CameraContext创建结果:', ctx)
+
+      if (ctx) {
+        cameraCtxRef.current = ctx
+        console.log('✅ CameraContext已创建')
+        Taro.showToast({title: '相机已就绪', icon: 'success', duration: 1500})
+      } else {
+        console.error('❌ CameraContext创建失败')
+        Taro.showToast({title: '相机初始化失败', icon: 'none'})
+      }
+    } catch (error) {
+      console.error('❌ 初始化相机异常:', error)
+      Taro.showToast({title: '相机初始化异常', icon: 'none'})
+    }
+  }, [])
+
   // 执行一次拍照和评估
   const performEvaluation = useCallback(async () => {
-    if (isEvaluatingRef.current) {
+    if (isProcessingRef.current) {
       console.log('⏭️ 上一次评估还在进行中，跳过')
       return
     }
 
-    isEvaluatingRef.current = true
+    if (!cameraCtxRef.current) {
+      console.error('❌ CameraContext不存在')
+      setRealtimeSuggestions(['相机未就绪'])
+      return
+    }
+
+    isProcessingRef.current = true
     console.log('--- 📸 开始拍照评估 ---')
 
     try {
-      // 调用相机拍照
-      const res = await Taro.chooseImage({
-        count: 1,
-        sizeType: ['compressed'],
-        sourceType: ['camera']
+      // 使用CameraContext拍照
+      cameraCtxRef.current.takePhoto({
+        quality: 'low',
+        success: async (res: any) => {
+          console.log('✅ 拍照成功:', res.tempImagePath)
+          retryCountRef.current = 0 // 重置重试计数
+
+          try {
+            // 更新当前图片
+            setCurrentImage(res.tempImagePath)
+            setEvaluationCount((prev) => prev + 1)
+
+            // 本地评估
+            const result = await evaluatePhotoLocally(res.tempImagePath)
+            console.log('✅ 评估完成 - 总分:', result.total_score)
+
+            // 生成实时建议
+            const suggestions: string[] = []
+
+            if (result.composition_score < 20) {
+              suggestions.push('构图：需优化主体位置')
+            } else if (result.composition_score < 25) {
+              suggestions.push('构图：可调整主体')
+            }
+
+            if (result.angle_score < 12) {
+              suggestions.push('角度：建议换个视角')
+            } else if (result.angle_score < 16) {
+              suggestions.push('角度：可尝试其他角度')
+            }
+
+            if (result.distance_score < 6) {
+              suggestions.push('距离：需调整拍摄距离')
+            }
+
+            if (result.height_score < 6) {
+              suggestions.push('光线：光线不足')
+            } else if (result.height_score < 8) {
+              suggestions.push('光线：曝光欠佳')
+            }
+
+            if (suggestions.length === 0) {
+              suggestions.push('画面良好，可以拍摄')
+            }
+
+            console.log('💡 实时建议:', suggestions)
+            setRealtimeSuggestions(suggestions)
+            setEvaluation(result)
+          } catch (error) {
+            console.error('❌ 评估失败:', error)
+            setRealtimeSuggestions(['评估失败，继续监控...'])
+          }
+        },
+        fail: (err: any) => {
+          console.error('❌ 拍照失败:', err)
+          retryCountRef.current++
+
+          if (retryCountRef.current >= 3) {
+            console.error('❌ 拍照失败次数过多，停止评估')
+            setRealtimeSuggestions(['拍照失败次数过多，请重新开始'])
+            // stopEvaluation() - 改为直接停止
+            if (evaluationTimerRef.current) {
+              clearInterval(evaluationTimerRef.current)
+              evaluationTimerRef.current = null
+            }
+            setIsEvaluating(false)
+          } else {
+            setRealtimeSuggestions([`拍照失败，正在重试(${retryCountRef.current}/3)...`])
+          }
+        }
       })
-
-      if (res.tempFilePaths && res.tempFilePaths.length > 0) {
-        const imagePath = res.tempFilePaths[0]
-        console.log('✅ 拍照成功:', imagePath)
-
-        // 更新当前图片
-        setCurrentImage(imagePath)
-        setEvaluationCount((prev) => prev + 1)
-
-        // 本地评估
-        const result = await evaluatePhotoLocally(imagePath)
-        console.log('✅ 评估完成 - 总分:', result.total_score)
-
-        // 生成实时建议
-        const suggestions: string[] = []
-
-        if (result.composition_score < 20) {
-          suggestions.push('构图：需优化主体位置')
-        } else if (result.composition_score < 25) {
-          suggestions.push('构图：可调整主体')
-        }
-
-        if (result.angle_score < 12) {
-          suggestions.push('角度：建议换个视角')
-        } else if (result.angle_score < 16) {
-          suggestions.push('角度：可尝试其他角度')
-        }
-
-        if (result.distance_score < 6) {
-          suggestions.push('距离：需调整拍摄距离')
-        }
-
-        if (result.height_score < 6) {
-          suggestions.push('光线：光线不足')
-        } else if (result.height_score < 8) {
-          suggestions.push('光线：曝光欠佳')
-        }
-
-        if (suggestions.length === 0) {
-          suggestions.push('画面良好，可以拍摄')
-        }
-
-        console.log('💡 实时建议:', suggestions)
-        setRealtimeSuggestions(suggestions)
-        setEvaluation(result)
-      }
-    } catch (error: any) {
-      console.error('❌ 拍照或评估失败:', error)
-
-      // 如果用户取消拍照，停止评估
-      if (error.errMsg?.includes('cancel')) {
-        console.log('用户取消拍照，停止评估')
-        if (evaluationTimerRef.current) {
-          clearInterval(evaluationTimerRef.current)
-          evaluationTimerRef.current = null
-        }
-        setMode('idle')
-        setRealtimeSuggestions([])
-        setEvaluationCount(0)
-      } else {
-        setRealtimeSuggestions(['拍照失败，请重试'])
-      }
+    } catch (error) {
+      console.error('❌ 拍照异常:', error)
+      setRealtimeSuggestions(['拍照异常，继续监控...'])
     } finally {
-      isEvaluatingRef.current = false
+      isProcessingRef.current = false
     }
   }, [])
 
@@ -133,28 +169,38 @@ export default function CameraPage() {
       clearInterval(evaluationTimerRef.current)
       evaluationTimerRef.current = null
     }
-    setMode('idle')
+    setIsEvaluating(false)
     setRealtimeSuggestions([])
-    setEvaluationCount(0)
   }, [])
 
   // 开始实时评估
-  const startEvaluation = useCallback(async () => {
+  const startEvaluation = useCallback(() => {
     console.log('=== 🚀 开始实时评估 ===')
-    setMode('evaluating')
+
+    if (!cameraCtxRef.current) {
+      console.error('❌ CameraContext未创建')
+      Taro.showToast({title: '相机未就绪，请稍候重试', icon: 'none'})
+
+      // 尝试重新初始化
+      initCamera()
+      return
+    }
+
+    setIsEvaluating(true)
     setEvaluationCount(0)
-    setRealtimeSuggestions(['准备拍照...'])
+    setRealtimeSuggestions(['开始实时评估...'])
+    retryCountRef.current = 0
 
     // 立即进行第一次拍照评估
-    await performEvaluation()
+    performEvaluation()
 
     // 启动定时器，每2秒拍照一次
-    evaluationTimerRef.current = setInterval(async () => {
-      if (!isEvaluatingRef.current) {
-        await performEvaluation()
+    evaluationTimerRef.current = setInterval(() => {
+      if (!isProcessingRef.current) {
+        performEvaluation()
       }
     }, 2000)
-  }, [performEvaluation])
+  }, [initCamera, performEvaluation])
 
   // 确认拍摄（保存当前照片）
   const confirmCapture = useCallback(() => {
@@ -163,6 +209,7 @@ export default function CameraPage() {
       clearInterval(evaluationTimerRef.current)
       evaluationTimerRef.current = null
     }
+    setIsEvaluating(false)
     setMode('captured')
   }, [])
 
@@ -173,8 +220,14 @@ export default function CameraPage() {
     setEvaluation(null)
     setRealtimeSuggestions([])
     setEvaluationCount(0)
-    setMode('idle')
-  }, [])
+    setIsEvaluating(false)
+    setMode('preview')
+
+    // 重新初始化相机
+    setTimeout(() => {
+      initCamera()
+    }, 500)
+  }, [initCamera])
 
   // 保存评估结果
   const saveEvaluation = useCallback(async () => {
@@ -265,183 +318,96 @@ export default function CameraPage() {
 
   return (
     <View className="min-h-screen bg-gradient-dark">
-      <ScrollView scrollY style={{height: '100vh', background: 'transparent'}}>
-        <View className="px-6 py-8">
-          {/* 标题 */}
-          <View className="mb-6">
-            <Text className="text-2xl font-bold text-white mb-2">拍照助手</Text>
-            <Text className="text-sm text-muted-foreground">实时评估拍摄画面，获取专业建议</Text>
+      {/* 预览模式 */}
+      {mode === 'preview' && (
+        <View className="relative" style={{height: '100vh'}}>
+          {/* Camera组件 */}
+          <Camera className="w-full h-full" devicePosition="back" flash="off" style={{width: '100%', height: '100%'}} />
+
+          {/* 顶部信息栏 */}
+          <View className="absolute top-4 left-4 right-4">
+            {!isEvaluating && (
+              <View className="bg-black/70 rounded-xl p-4">
+                <Text className="text-sm text-white text-center leading-relaxed">
+                  点击"开始实时评估"后，系统会每2秒自动采集镜头画面并提供建议
+                </Text>
+              </View>
+            )}
+
+            {isEvaluating && (
+              <View>
+                {/* 评估计数 */}
+                <View className="bg-primary/90 rounded-xl p-3 mb-3">
+                  <View className="flex flex-row items-center justify-between">
+                    <View className="flex flex-row items-center">
+                      <View className="i-mdi-camera-timer text-lg text-white mr-2" />
+                      <Text className="text-sm text-white font-semibold">实时评估中...</Text>
+                    </View>
+                    <Text className="text-sm text-white font-semibold">已评估 {evaluationCount} 次</Text>
+                  </View>
+                </View>
+
+                {/* 实时建议 */}
+                {realtimeSuggestions.length > 0 && (
+                  <View className="bg-black/70 rounded-xl p-4">
+                    <View className="flex flex-row items-center mb-2">
+                      <View className="i-mdi-lightbulb-on text-lg text-primary mr-2" />
+                      <Text className="text-sm font-semibold text-white">实时建议</Text>
+                    </View>
+                    <View className="space-y-1">
+                      {realtimeSuggestions.map((suggestion, index) => (
+                        <Text key={index} className="text-sm text-white leading-relaxed">
+                          • {suggestion}
+                        </Text>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* 当前评分 */}
+                {evaluation && (
+                  <View className="bg-black/70 rounded-xl p-4 mt-3">
+                    <View className="flex flex-row items-center justify-between mb-3">
+                      <Text className="text-sm font-semibold text-white">当前评分</Text>
+                      <View className="flex flex-row items-center">
+                        <Text className="text-2xl font-bold text-primary mr-1">{evaluation.total_score}</Text>
+                        <Text className="text-xs text-white">分</Text>
+                      </View>
+                    </View>
+                    <View className="space-y-2">
+                      <View className="flex flex-row items-center justify-between">
+                        <Text className="text-xs text-white">构图</Text>
+                        <Text className="text-xs text-white">{evaluation.composition_score}/30</Text>
+                      </View>
+                      <View className="flex flex-row items-center justify-between">
+                        <Text className="text-xs text-white">角度</Text>
+                        <Text className="text-xs text-white">{evaluation.angle_score}/20</Text>
+                      </View>
+                      <View className="flex flex-row items-center justify-between">
+                        <Text className="text-xs text-white">距离</Text>
+                        <Text className="text-xs text-white">{evaluation.distance_score}/10</Text>
+                      </View>
+                      <View className="flex flex-row items-center justify-between">
+                        <Text className="text-xs text-white">光线</Text>
+                        <Text className="text-xs text-white">{evaluation.height_score}/10</Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
 
-          {/* 空闲状态 - 显示说明和开始按钮 */}
-          {mode === 'idle' && (
-            <View>
-              {/* 功能说明 */}
-              <View className="bg-card rounded-2xl p-6 mb-6 shadow-card">
-                <View className="flex flex-row items-center mb-4">
-                  <View className="i-mdi-information text-2xl text-primary mr-3" />
-                  <Text className="text-lg font-semibold text-foreground">功能说明</Text>
-                </View>
-                <View className="space-y-3">
-                  <View className="flex flex-row items-start">
-                    <View className="i-mdi-numeric-1-circle text-xl text-primary mr-3 mt-0.5" />
-                    <View className="flex-1">
-                      <Text className="text-sm text-foreground leading-relaxed">
-                        点击"开始实时评估"后，系统会每2秒自动拍照一次
-                      </Text>
-                    </View>
-                  </View>
-                  <View className="flex flex-row items-start">
-                    <View className="i-mdi-numeric-2-circle text-xl text-secondary mr-3 mt-0.5" />
-                    <View className="flex-1">
-                      <Text className="text-sm text-foreground leading-relaxed">
-                        每次拍照后会立即显示评估结果和改进建议
-                      </Text>
-                    </View>
-                  </View>
-                  <View className="flex flex-row items-start">
-                    <View className="i-mdi-numeric-3-circle text-xl text-accent mr-3 mt-0.5" />
-                    <View className="flex-1">
-                      <Text className="text-sm text-foreground leading-relaxed">
-                        根据建议调整拍摄角度、距离等，直到满意为止
-                      </Text>
-                    </View>
-                  </View>
-                  <View className="flex flex-row items-start">
-                    <View className="i-mdi-numeric-4-circle text-xl text-primary mr-3 mt-0.5" />
-                    <View className="flex-1">
-                      <Text className="text-sm text-foreground leading-relaxed">
-                        点击"确认拍摄"保存当前照片，或"停止评估"重新开始
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-
-              {/* 开始按钮 */}
+          {/* 底部操作按钮 */}
+          <View className="absolute bottom-8 left-0 right-0 px-6">
+            {!isEvaluating ? (
               <Button
-                className="w-full bg-gradient-primary text-white py-5 rounded-2xl break-keep text-lg font-semibold shadow-elegant"
+                className="w-full bg-gradient-primary text-white py-4 rounded-xl break-keep text-base shadow-elegant"
                 size="default"
                 onClick={startEvaluation}>
-                <View className="flex flex-row items-center justify-center">
-                  <View className="i-mdi-camera text-2xl mr-2" />
-                  <Text className="text-lg text-white font-semibold">开始实时评估</Text>
-                </View>
+                开始实时评估
               </Button>
-
-              {/* 提示信息 */}
-              <View className="mt-6 bg-muted/30 rounded-xl p-4">
-                <View className="flex flex-row items-start">
-                  <View className="i-mdi-lightbulb-on text-lg text-primary mr-2 mt-0.5" />
-                  <View className="flex-1">
-                    <Text className="text-xs text-muted-foreground leading-relaxed">
-                      提示：每次拍照时会调用系统相机，请允许相机权限。评估使用本地算法，无需上传照片到服务器。
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* 评估中状态 - 显示最新照片和建议 */}
-          {mode === 'evaluating' && (
-            <View>
-              {/* 评估计数 */}
-              <View className="bg-primary/20 rounded-xl p-4 mb-4">
-                <View className="flex flex-row items-center justify-between">
-                  <View className="flex flex-row items-center">
-                    <View className="i-mdi-camera-timer text-xl text-primary mr-2" />
-                    <Text className="text-sm text-white">实时评估中...</Text>
-                  </View>
-                  <Text className="text-sm text-white font-semibold">已评估 {evaluationCount} 次</Text>
-                </View>
-              </View>
-
-              {/* 当前照片 */}
-              {currentImage && (
-                <View className="mb-4">
-                  <Image
-                    src={currentImage}
-                    mode="aspectFit"
-                    className="w-full rounded-2xl bg-card"
-                    style={{height: '400px'}}
-                  />
-                </View>
-              )}
-
-              {/* 实时建议 */}
-              {realtimeSuggestions.length > 0 && (
-                <View className="bg-card rounded-2xl p-5 mb-4 shadow-card">
-                  <View className="flex flex-row items-center mb-3">
-                    <View className="i-mdi-lightbulb-on text-xl text-primary mr-2" />
-                    <Text className="text-base font-semibold text-foreground">实时建议</Text>
-                  </View>
-                  <View className="space-y-2">
-                    {realtimeSuggestions.map((suggestion, index) => (
-                      <Text key={index} className="text-sm text-foreground leading-relaxed">
-                        • {suggestion}
-                      </Text>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {/* 当前评分 */}
-              {evaluation && (
-                <View className="bg-card rounded-2xl p-5 mb-4 shadow-card">
-                  <View className="flex flex-row items-center justify-between mb-4">
-                    <Text className="text-base font-semibold text-foreground">当前评分</Text>
-                    <View className="flex flex-row items-center">
-                      <Text className={`text-3xl font-bold ${getScoreColor(evaluation.total_score)} mr-1`}>
-                        {evaluation.total_score}
-                      </Text>
-                      <Text className="text-sm text-muted-foreground">分</Text>
-                    </View>
-                  </View>
-
-                  {/* 各项得分 */}
-                  <View className="space-y-3">
-                    <View className="flex flex-row items-center justify-between">
-                      <Text className="text-sm text-foreground">构图</Text>
-                      <View className="flex flex-row items-center">
-                        <Text className="text-xs text-muted-foreground mr-2">
-                          {getShortSuggestion('composition', evaluation.composition_score)}
-                        </Text>
-                        <Text className="text-sm text-foreground font-medium">{evaluation.composition_score}/30</Text>
-                      </View>
-                    </View>
-                    <View className="flex flex-row items-center justify-between">
-                      <Text className="text-sm text-foreground">角度</Text>
-                      <View className="flex flex-row items-center">
-                        <Text className="text-xs text-muted-foreground mr-2">
-                          {getShortSuggestion('angle', evaluation.angle_score)}
-                        </Text>
-                        <Text className="text-sm text-foreground font-medium">{evaluation.angle_score}/20</Text>
-                      </View>
-                    </View>
-                    <View className="flex flex-row items-center justify-between">
-                      <Text className="text-sm text-foreground">距离</Text>
-                      <View className="flex flex-row items-center">
-                        <Text className="text-xs text-muted-foreground mr-2">
-                          {getShortSuggestion('distance', evaluation.distance_score)}
-                        </Text>
-                        <Text className="text-sm text-foreground font-medium">{evaluation.distance_score}/10</Text>
-                      </View>
-                    </View>
-                    <View className="flex flex-row items-center justify-between">
-                      <Text className="text-sm text-foreground">光线</Text>
-                      <View className="flex flex-row items-center">
-                        <Text className="text-xs text-muted-foreground mr-2">
-                          {getShortSuggestion('height', evaluation.height_score)}
-                        </Text>
-                        <Text className="text-sm text-foreground font-medium">{evaluation.height_score}/10</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              )}
-
-              {/* 操作按钮 */}
+            ) : (
               <View className="space-y-3">
                 <Button
                   className="w-full bg-primary text-white py-4 rounded-xl break-keep text-base"
@@ -456,183 +422,187 @@ export default function CameraPage() {
                   停止评估
                 </Button>
               </View>
-            </View>
-          )}
-
-          {/* 已拍摄状态 - 显示最终结果 */}
-          {mode === 'captured' && currentImage && evaluation && (
-            <View>
-              {/* 图片预览 */}
-              <View className="mb-6">
-                <Image
-                  src={currentImage}
-                  mode="aspectFit"
-                  className="w-full rounded-2xl bg-card"
-                  style={{height: '400px'}}
-                />
-              </View>
-
-              {/* 评估结果 */}
-              <View className="bg-card rounded-2xl p-6 mb-6 shadow-card">
-                {/* 总分 */}
-                <View className="flex flex-col items-center mb-6 pb-6 border-b border-border">
-                  <Text className="text-sm text-muted-foreground mb-2">综合评分</Text>
-                  <View className="flex flex-row items-center">
-                    <Text className={`text-5xl font-bold ${getScoreColor(evaluation.total_score)} mr-2`}>
-                      {evaluation.total_score}
-                    </Text>
-                    <Text className="text-lg text-muted-foreground">分</Text>
-                  </View>
-                </View>
-
-                {/* 各项得分（带进度条） */}
-                <View className="space-y-4 mb-6">
-                  {/* 构图 */}
-                  <View>
-                    <View className="flex flex-row items-center justify-between mb-2">
-                      <Text className="text-sm text-foreground">构图</Text>
-                      <View className="flex flex-row items-center">
-                        <Text className="text-xs text-muted-foreground mr-2">
-                          {getShortSuggestion('composition', evaluation.composition_score)}
-                        </Text>
-                        <Text className="text-sm text-foreground font-medium">{evaluation.composition_score}/30</Text>
-                      </View>
-                    </View>
-                    <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                      <View
-                        className="h-full bg-primary rounded-full"
-                        style={{
-                          width: `${(evaluation.composition_score / 30) * 100}%`
-                        }}
-                      />
-                    </View>
-                  </View>
-
-                  {/* 角度 */}
-                  <View>
-                    <View className="flex flex-row items-center justify-between mb-2">
-                      <Text className="text-sm text-foreground">角度</Text>
-                      <View className="flex flex-row items-center">
-                        <Text className="text-xs text-muted-foreground mr-2">
-                          {getShortSuggestion('angle', evaluation.angle_score)}
-                        </Text>
-                        <Text className="text-sm text-foreground font-medium">{evaluation.angle_score}/20</Text>
-                      </View>
-                    </View>
-                    <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                      <View
-                        className="h-full bg-secondary rounded-full"
-                        style={{
-                          width: `${(evaluation.angle_score / 20) * 100}%`
-                        }}
-                      />
-                    </View>
-                  </View>
-
-                  {/* 距离 */}
-                  <View>
-                    <View className="flex flex-row items-center justify-between mb-2">
-                      <Text className="text-sm text-foreground">距离</Text>
-                      <View className="flex flex-row items-center">
-                        <Text className="text-xs text-muted-foreground mr-2">
-                          {getShortSuggestion('distance', evaluation.distance_score)}
-                        </Text>
-                        <Text className="text-sm text-foreground font-medium">{evaluation.distance_score}/10</Text>
-                      </View>
-                    </View>
-                    <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                      <View
-                        className="h-full bg-accent rounded-full"
-                        style={{
-                          width: `${(evaluation.distance_score / 10) * 100}%`
-                        }}
-                      />
-                    </View>
-                  </View>
-
-                  {/* 高度 */}
-                  <View>
-                    <View className="flex flex-row items-center justify-between mb-2">
-                      <Text className="text-sm text-foreground">光线</Text>
-                      <View className="flex flex-row items-center">
-                        <Text className="text-xs text-muted-foreground mr-2">
-                          {getShortSuggestion('height', evaluation.height_score)}
-                        </Text>
-                        <Text className="text-sm text-foreground font-medium">{evaluation.height_score}/10</Text>
-                      </View>
-                    </View>
-                    <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                      <View
-                        className="h-full bg-primary rounded-full"
-                        style={{
-                          width: `${(evaluation.height_score / 10) * 100}%`
-                        }}
-                      />
-                    </View>
-                  </View>
-                </View>
-
-                {/* 详细改进建议 */}
-                {Object.keys(evaluation.suggestions).length > 0 && (
-                  <View className="bg-muted/50 rounded-xl p-4">
-                    <View className="flex flex-row items-center mb-3">
-                      <View className="i-mdi-lightbulb-on text-xl text-primary mr-2" />
-                      <Text className="text-sm font-semibold text-foreground">详细建议</Text>
-                    </View>
-                    <View className="space-y-2">
-                      {evaluation.suggestions.composition && (
-                        <Text className="text-sm text-foreground leading-relaxed">
-                          • {evaluation.suggestions.composition}
-                        </Text>
-                      )}
-                      {evaluation.suggestions.angle && (
-                        <Text className="text-sm text-foreground leading-relaxed">
-                          • {evaluation.suggestions.angle}
-                        </Text>
-                      )}
-                      {evaluation.suggestions.distance && (
-                        <Text className="text-sm text-foreground leading-relaxed">
-                          • {evaluation.suggestions.distance}
-                        </Text>
-                      )}
-                      {evaluation.suggestions.height && (
-                        <Text className="text-sm text-foreground leading-relaxed">
-                          • {evaluation.suggestions.height}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                )}
-              </View>
-
-              {/* 操作按钮 */}
-              <View className="space-y-3">
-                <Button
-                  className="w-full bg-secondary text-white py-4 rounded-xl break-keep text-base"
-                  size="default"
-                  onClick={saveEvaluation}>
-                  保存评估结果
-                </Button>
-                <Button
-                  className="w-full bg-card text-foreground py-4 rounded-xl border border-border break-keep text-base"
-                  size="default"
-                  onClick={restart}>
-                  重新拍摄
-                </Button>
-                <Button
-                  className="w-full bg-card text-foreground py-4 rounded-xl border border-border break-keep text-base"
-                  size="default"
-                  onClick={() => Taro.navigateBack()}>
-                  返回
-                </Button>
-              </View>
-            </View>
-          )}
-
-          {/* 底部间距 */}
-          <View className="h-20" />
+            )}
+          </View>
         </View>
-      </ScrollView>
+      )}
+
+      {/* 已拍摄模式 */}
+      {mode === 'captured' && currentImage && evaluation && (
+        <ScrollView scrollY style={{height: '100vh', background: 'transparent'}}>
+          <View className="px-6 py-8">
+            {/* 标题 */}
+            <View className="mb-6">
+              <Text className="text-2xl font-bold text-white mb-2">拍照助手</Text>
+              <Text className="text-sm text-muted-foreground">评估结果</Text>
+            </View>
+
+            {/* 图片预览 */}
+            <View className="mb-6">
+              <Image
+                src={currentImage}
+                mode="aspectFit"
+                className="w-full rounded-2xl bg-card"
+                style={{height: '400px'}}
+              />
+            </View>
+
+            {/* 评估结果 */}
+            <View className="bg-card rounded-2xl p-6 mb-6 shadow-card">
+              {/* 总分 */}
+              <View className="flex flex-col items-center mb-6 pb-6 border-b border-border">
+                <Text className="text-sm text-muted-foreground mb-2">综合评分</Text>
+                <View className="flex flex-row items-center">
+                  <Text className={`text-5xl font-bold ${getScoreColor(evaluation.total_score)} mr-2`}>
+                    {evaluation.total_score}
+                  </Text>
+                  <Text className="text-lg text-muted-foreground">分</Text>
+                </View>
+              </View>
+
+              {/* 各项得分（带进度条） */}
+              <View className="space-y-4 mb-6">
+                {/* 构图 */}
+                <View>
+                  <View className="flex flex-row items-center justify-between mb-2">
+                    <Text className="text-sm text-foreground">构图</Text>
+                    <View className="flex flex-row items-center">
+                      <Text className="text-xs text-muted-foreground mr-2">
+                        {getShortSuggestion('composition', evaluation.composition_score)}
+                      </Text>
+                      <Text className="text-sm text-foreground font-medium">{evaluation.composition_score}/30</Text>
+                    </View>
+                  </View>
+                  <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                    <View
+                      className="h-full bg-primary rounded-full"
+                      style={{
+                        width: `${(evaluation.composition_score / 30) * 100}%`
+                      }}
+                    />
+                  </View>
+                </View>
+
+                {/* 角度 */}
+                <View>
+                  <View className="flex flex-row items-center justify-between mb-2">
+                    <Text className="text-sm text-foreground">角度</Text>
+                    <View className="flex flex-row items-center">
+                      <Text className="text-xs text-muted-foreground mr-2">
+                        {getShortSuggestion('angle', evaluation.angle_score)}
+                      </Text>
+                      <Text className="text-sm text-foreground font-medium">{evaluation.angle_score}/20</Text>
+                    </View>
+                  </View>
+                  <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                    <View
+                      className="h-full bg-secondary rounded-full"
+                      style={{
+                        width: `${(evaluation.angle_score / 20) * 100}%`
+                      }}
+                    />
+                  </View>
+                </View>
+
+                {/* 距离 */}
+                <View>
+                  <View className="flex flex-row items-center justify-between mb-2">
+                    <Text className="text-sm text-foreground">距离</Text>
+                    <View className="flex flex-row items-center">
+                      <Text className="text-xs text-muted-foreground mr-2">
+                        {getShortSuggestion('distance', evaluation.distance_score)}
+                      </Text>
+                      <Text className="text-sm text-foreground font-medium">{evaluation.distance_score}/10</Text>
+                    </View>
+                  </View>
+                  <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                    <View
+                      className="h-full bg-accent rounded-full"
+                      style={{
+                        width: `${(evaluation.distance_score / 10) * 100}%`
+                      }}
+                    />
+                  </View>
+                </View>
+
+                {/* 光线 */}
+                <View>
+                  <View className="flex flex-row items-center justify-between mb-2">
+                    <Text className="text-sm text-foreground">光线</Text>
+                    <View className="flex flex-row items-center">
+                      <Text className="text-xs text-muted-foreground mr-2">
+                        {getShortSuggestion('height', evaluation.height_score)}
+                      </Text>
+                      <Text className="text-sm text-foreground font-medium">{evaluation.height_score}/10</Text>
+                    </View>
+                  </View>
+                  <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                    <View
+                      className="h-full bg-primary rounded-full"
+                      style={{
+                        width: `${(evaluation.height_score / 10) * 100}%`
+                      }}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* 详细改进建议 */}
+              {Object.keys(evaluation.suggestions).length > 0 && (
+                <View className="bg-muted/50 rounded-xl p-4">
+                  <View className="flex flex-row items-center mb-3">
+                    <View className="i-mdi-lightbulb-on text-xl text-primary mr-2" />
+                    <Text className="text-sm font-semibold text-foreground">详细建议</Text>
+                  </View>
+                  <View className="space-y-2">
+                    {evaluation.suggestions.composition && (
+                      <Text className="text-sm text-foreground leading-relaxed">
+                        • {evaluation.suggestions.composition}
+                      </Text>
+                    )}
+                    {evaluation.suggestions.angle && (
+                      <Text className="text-sm text-foreground leading-relaxed">• {evaluation.suggestions.angle}</Text>
+                    )}
+                    {evaluation.suggestions.distance && (
+                      <Text className="text-sm text-foreground leading-relaxed">
+                        • {evaluation.suggestions.distance}
+                      </Text>
+                    )}
+                    {evaluation.suggestions.height && (
+                      <Text className="text-sm text-foreground leading-relaxed">• {evaluation.suggestions.height}</Text>
+                    )}
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* 操作按钮 */}
+            <View className="space-y-3">
+              <Button
+                className="w-full bg-secondary text-white py-4 rounded-xl break-keep text-base"
+                size="default"
+                onClick={saveEvaluation}>
+                保存评估结果
+              </Button>
+              <Button
+                className="w-full bg-card text-foreground py-4 rounded-xl border border-border break-keep text-base"
+                size="default"
+                onClick={restart}>
+                重新拍摄
+              </Button>
+              <Button
+                className="w-full bg-card text-foreground py-4 rounded-xl border border-border break-keep text-base"
+                size="default"
+                onClick={() => Taro.navigateBack()}>
+                返回
+              </Button>
+            </View>
+
+            {/* 底部间距 */}
+            <View className="h-20" />
+          </View>
+        </ScrollView>
+      )}
     </View>
   )
 }
