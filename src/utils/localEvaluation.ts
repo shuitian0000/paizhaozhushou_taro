@@ -19,10 +19,17 @@ export interface LocalEvaluationResult {
 }
 
 /**
- * 分析图片的亮度
+ * 分析图片的亮度分布
+ * 返回：{mean: 平均亮度, histogram: 亮度直方图}
  */
-function analyzeBrightness(imageData: ImageData): number {
+function analyzeBrightnessDistribution(imageData: ImageData): {
+  mean: number
+  histogram: number[]
+  darkRatio: number
+  brightRatio: number
+} {
   const data = imageData.data
+  const histogram = new Array(256).fill(0)
   let totalBrightness = 0
   const pixelCount = data.length / 4
 
@@ -30,12 +37,110 @@ function analyzeBrightness(imageData: ImageData): number {
     const r = data[i]
     const g = data[i + 1]
     const b = data[i + 2]
-    // 计算亮度 (使用加权平均)
-    const brightness = 0.299 * r + 0.587 * g + 0.114 * b
+    const brightness = Math.round(0.299 * r + 0.587 * g + 0.114 * b)
+    histogram[brightness]++
     totalBrightness += brightness
   }
 
-  return totalBrightness / pixelCount / 255 // 归一化到0-1
+  const mean = totalBrightness / pixelCount
+
+  // 计算暗部和亮部比例
+  let darkPixels = 0
+  let brightPixels = 0
+  for (let i = 0; i < 256; i++) {
+    if (i < 85) darkPixels += histogram[i]
+    if (i > 170) brightPixels += histogram[i]
+  }
+
+  return {
+    mean: mean / 255,
+    histogram,
+    darkRatio: darkPixels / pixelCount,
+    brightRatio: brightPixels / pixelCount
+  }
+}
+
+/**
+ * 分析图片的色彩饱和度
+ */
+function analyzeColorSaturation(imageData: ImageData): number {
+  const data = imageData.data
+  let totalSaturation = 0
+  const pixelCount = data.length / 4
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i]
+    const g = data[i + 1]
+    const b = data[i + 2]
+
+    const max = Math.max(r, g, b)
+    const min = Math.min(r, g, b)
+    const saturation = max === 0 ? 0 : (max - min) / max
+
+    totalSaturation += saturation
+  }
+
+  return totalSaturation / pixelCount
+}
+
+/**
+ * 检测边缘和细节
+ * 使用Sobel算子检测边缘
+ */
+function analyzeEdgeAndDetail(imageData: ImageData): {
+  edgeStrength: number
+  detailRichness: number
+} {
+  const {width, height, data} = imageData
+  const gray: number[] = []
+
+  // 转换为灰度
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i]
+    const g = data[i + 1]
+    const b = data[i + 2]
+    gray.push(0.299 * r + 0.587 * g + 0.114 * b)
+  }
+
+  let totalEdge = 0
+  let edgePixels = 0
+
+  // Sobel算子
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = y * width + x
+
+      // Gx (水平方向)
+      const gx =
+        -gray[idx - width - 1] +
+        gray[idx - width + 1] -
+        2 * gray[idx - 1] +
+        2 * gray[idx + 1] -
+        gray[idx + width - 1] +
+        gray[idx + width + 1]
+
+      // Gy (垂直方向)
+      const gy =
+        -gray[idx - width - 1] -
+        2 * gray[idx - width] -
+        gray[idx - width + 1] +
+        gray[idx + width - 1] +
+        2 * gray[idx + width] +
+        gray[idx + width + 1]
+
+      const magnitude = Math.sqrt(gx * gx + gy * gy)
+      totalEdge += magnitude
+      if (magnitude > 50) edgePixels++
+    }
+  }
+
+  const avgEdge = totalEdge / ((width - 2) * (height - 2))
+  const edgeRatio = edgePixels / ((width - 2) * (height - 2))
+
+  return {
+    edgeStrength: Math.min(avgEdge / 500, 1),
+    detailRichness: Math.min(edgeRatio * 2, 1)
+  }
 }
 
 /**
@@ -151,7 +256,8 @@ function analyzeCenterFocus(imageData: ImageData): number {
 }
 
 /**
- * 本地评估照片
+ * 本地评估照片 - 优化版
+ * 借鉴专业摄影评估模型
  */
 export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEvaluationResult> {
   return new Promise((resolve, reject) => {
@@ -193,67 +299,191 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
 
           console.log('获取图片数据成功，像素数:', imageData.data.length)
 
-          // 分析各项指标
-          const brightness = analyzeBrightness(imageData)
+          // === 专业摄影评估指标分析 ===
+
+          // 1. 亮度分布分析
+          const brightnessInfo = analyzeBrightnessDistribution(imageData)
+
+          // 2. 对比度分析
           const contrast = analyzeContrast(imageData)
+
+          // 3. 色彩饱和度分析
+          const saturation = analyzeColorSaturation(imageData)
+
+          // 4. 边缘和细节分析
+          const edgeInfo = analyzeEdgeAndDetail(imageData)
+
+          // 5. 三分法构图分析
           const ruleOfThirds = analyzeRuleOfThirds(imageData)
+
+          // 6. 中心焦点分析
           const centerFocus = analyzeCenterFocus(imageData)
 
-          console.log('图片分析完成:', {brightness, contrast, ruleOfThirds, centerFocus})
+          console.log('图片分析完成:', {
+            brightness: brightnessInfo.mean,
+            contrast,
+            saturation,
+            edgeStrength: edgeInfo.edgeStrength,
+            detailRichness: edgeInfo.detailRichness,
+            ruleOfThirds,
+            centerFocus
+          })
 
-          // 计算各维度得分
-          // 构图得分 (30分)
-          const compositionScore = Math.round((ruleOfThirds * 0.6 + centerFocus * 0.4) * 30)
+          // === 计算各维度得分（借鉴专业评估模型）===
 
-          // 角度得分 (20分) - 基于对比度
-          const angleScore = Math.round(contrast * 20)
+          // 1. 构图得分 (30分)
+          // 专业构图考虑：三分法、黄金分割、视觉平衡
+          const compositionBase = ruleOfThirds * 0.5 + centerFocus * 0.3 + edgeInfo.detailRichness * 0.2
+          let compositionScore = Math.round(compositionBase * 30)
 
-          // 距离得分 (10分) - 基于中心焦点
-          const distanceScore = Math.round(centerFocus * 10)
+          // 构图加分项：细节丰富度
+          if (edgeInfo.detailRichness > 0.6) {
+            compositionScore = Math.min(compositionScore + 2, 30)
+          }
 
-          // 高度得分 (10分) - 基于亮度分布
-          const heightScore = Math.round((brightness > 0.3 && brightness < 0.7 ? 1 : 0.7) * 10)
+          // 2. 角度得分 (20分)
+          // 专业角度考虑：对比度、边缘强度、视角独特性
+          const angleBase = contrast * 0.5 + edgeInfo.edgeStrength * 0.5
+          let angleScore = Math.round(angleBase * 20)
 
-          // 姿态得分 (30分) - 本地无法准确判断，给个中等分数
-          const poseScore = null // 本地评估不包含姿态
+          // 角度加分项：高对比度
+          if (contrast > 0.6) {
+            angleScore = Math.min(angleScore + 2, 20)
+          }
 
-          // 总分
-          const totalScore = compositionScore + angleScore + distanceScore + heightScore + 15 // 姿态给15分基础分
+          // 3. 距离得分 (10分)
+          // 专业距离考虑：主体清晰度、景深效果
+          const distanceBase = centerFocus * 0.7 + edgeInfo.detailRichness * 0.3
+          const distanceScore = Math.round(distanceBase * 10)
 
-          // 生成建议
+          // 4. 光线得分 (10分)
+          // 专业光线考虑：曝光准确性、明暗分布、色彩饱和度
+          let heightScore = 0
+
+          // 理想曝光范围：0.35-0.65
+          if (brightnessInfo.mean >= 0.35 && brightnessInfo.mean <= 0.65) {
+            heightScore = 10
+          } else if (brightnessInfo.mean >= 0.25 && brightnessInfo.mean <= 0.75) {
+            heightScore = 8
+          } else if (brightnessInfo.mean >= 0.15 && brightnessInfo.mean <= 0.85) {
+            heightScore = 6
+          } else {
+            heightScore = 4
+          }
+
+          // 光线加分项：色彩饱和度适中
+          if (saturation >= 0.3 && saturation <= 0.7) {
+            heightScore = Math.min(heightScore + 1, 10)
+          }
+
+          // 光线减分项：过度曝光或欠曝
+          if (brightnessInfo.darkRatio > 0.4 || brightnessInfo.brightRatio > 0.4) {
+            heightScore = Math.max(heightScore - 2, 0)
+          }
+
+          // 5. 姿态得分 (30分) - 本地无法准确判断，给基础分
+          const poseScore = null
+
+          // 基础姿态分（用于总分计算）
+          let poseBaseScore = 18 // 默认60%
+
+          // 根据场景类型调整姿态基础分
+          // 人像照片：需要更高的姿态分
+          // 风景照片：姿态分影响较小
+          if (centerFocus > 0.7 && edgeInfo.detailRichness > 0.5) {
+            // 可能是人像照片（中心有明显主体）
+            poseBaseScore = 20
+          } else if (centerFocus < 0.4 && ruleOfThirds > 0.6) {
+            // 可能是风景照片（构图分散）
+            poseBaseScore = 22
+          }
+
+          // 总分计算
+          const totalScore = compositionScore + angleScore + distanceScore + heightScore + poseBaseScore
+
+          // === 生成专业建议 ===
           const suggestions: any = {}
 
-          if (compositionScore < 20) {
-            suggestions.composition = '尝试使用三分法构图，将主体放在画面的交叉点上'
-          } else if (compositionScore < 25) {
-            suggestions.composition = '构图不错，可以尝试调整主体位置使其更突出'
+          // 构图建议
+          if (compositionScore < 18) {
+            if (ruleOfThirds < 0.4) {
+              suggestions.composition = '建议使用三分法构图，将主体放在画面的交叉点上，使画面更有视觉冲击力'
+            } else if (centerFocus < 0.4) {
+              suggestions.composition = '主体不够突出，建议调整构图使主体更加清晰明确'
+            } else {
+              suggestions.composition = '构图较为平淡，可以尝试更有创意的角度和布局'
+            }
+          } else if (compositionScore < 24) {
+            if (edgeInfo.detailRichness < 0.5) {
+              suggestions.composition = '画面细节略显不足，可以靠近主体或选择更丰富的场景'
+            } else {
+              suggestions.composition = '构图基础良好，可以尝试调整主体位置使其更符合黄金分割比例'
+            }
+          } else if (compositionScore < 28) {
+            suggestions.composition = '构图优秀，画面平衡感强，继续保持'
           }
 
+          // 角度建议
           if (angleScore < 12) {
-            suggestions.angle = '增加画面对比度，尝试不同的拍摄角度'
+            if (contrast < 0.3) {
+              suggestions.angle = '画面对比度较低，建议寻找光影对比更强的角度，或调整拍摄时间'
+            } else if (edgeInfo.edgeStrength < 0.3) {
+              suggestions.angle = '画面缺乏层次感，尝试从不同高度或侧面拍摄，增加立体感'
+            } else {
+              suggestions.angle = '拍摄角度较为常规，可以尝试俯拍、仰拍等特殊视角'
+            }
           } else if (angleScore < 16) {
-            suggestions.angle = '角度选择合理，可以尝试更有创意的视角'
+            suggestions.angle = '角度选择合理，可以尝试更大胆的视角创新'
+          } else if (angleScore < 19) {
+            suggestions.angle = '拍摄角度出色，很好地展现了主体特点'
           }
 
-          if (distanceScore < 6) {
-            suggestions.distance = '调整拍摄距离，让主体更清晰突出'
+          // 距离建议
+          if (distanceScore < 5) {
+            suggestions.distance = '拍摄距离不当，主体不够清晰。建议调整距离使主体占据画面1/3到2/3'
+          } else if (distanceScore < 7) {
+            suggestions.distance = '距离基本合适，可以微调以获得更好的景深效果'
+          } else if (distanceScore < 9) {
+            suggestions.distance = '拍摄距离恰当，主体突出且背景协调'
           }
 
-          if (heightScore < 6) {
-            suggestions.height = '注意光线条件，避免过亮或过暗'
-          } else if (brightness < 0.3) {
-            suggestions.height = '画面偏暗，建议增加光线或调整曝光'
-          } else if (brightness > 0.7) {
-            suggestions.height = '画面偏亮，建议减少光线或降低曝光'
+          // 光线建议
+          if (heightScore < 5) {
+            if (brightnessInfo.mean < 0.3) {
+              suggestions.height = '画面整体偏暗，建议增加光源或提高ISO/曝光补偿'
+            } else if (brightnessInfo.mean > 0.7) {
+              suggestions.height = '画面过度曝光，建议降低曝光或选择光线较柔和的时段拍摄'
+            } else if (brightnessInfo.darkRatio > 0.5) {
+              suggestions.height = '暗部细节丢失严重，建议使用补光或HDR模式'
+            } else if (brightnessInfo.brightRatio > 0.5) {
+              suggestions.height = '高光溢出严重，建议降低曝光或使用渐变滤镜'
+            }
+          } else if (heightScore < 8) {
+            if (saturation < 0.3) {
+              suggestions.height = '色彩饱和度偏低，可以在光线充足时拍摄或后期适当增强'
+            } else if (saturation > 0.7) {
+              suggestions.height = '色彩过于饱和，建议适当降低饱和度保持自然'
+            } else {
+              suggestions.height = '曝光基本准确，可以微调以获得更好的明暗层次'
+            }
+          } else if (heightScore < 10) {
+            suggestions.height = '光线运用良好，明暗过渡自然'
           }
 
-          // 场景类型判断（简化版）
-          const sceneType = 'other'
+          // 场景类型判断（优化版）
+          let sceneType = 'other'
+          if (centerFocus > 0.7 && edgeInfo.detailRichness > 0.5) {
+            sceneType = 'portrait' // 人像
+          } else if (centerFocus < 0.4 && ruleOfThirds > 0.6) {
+            sceneType = 'landscape' // 风景
+          } else if (centerFocus > 0.5 && ruleOfThirds > 0.5) {
+            sceneType = 'group' // 合影
+          }
 
-          console.log('评估完成，总分:', totalScore)
+          console.log('评估完成，总分:', totalScore, '场景类型:', sceneType)
 
           resolve({
-            total_score: Math.min(totalScore, 100),
+            total_score: Math.min(Math.max(totalScore, 0), 100),
             composition_score: compositionScore,
             pose_score: poseScore,
             angle_score: angleScore,

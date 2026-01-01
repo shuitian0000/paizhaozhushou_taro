@@ -229,6 +229,57 @@ export default function CameraPage() {
     }, 500)
   }, [initCamera])
 
+  // 直接拍摄（不启动实时评估）
+  const directCapture = useCallback(async () => {
+    console.log('=== 📸 直接拍摄 ===')
+
+    if (!cameraCtxRef.current) {
+      console.error('❌ CameraContext未创建')
+      Taro.showToast({title: '相机未就绪，请稍候重试', icon: 'none'})
+      initCamera()
+      return
+    }
+
+    Taro.showLoading({title: '拍摄中...'})
+
+    try {
+      cameraCtxRef.current.takePhoto({
+        quality: 'high',
+        success: async (res: any) => {
+          console.log('✅ 直接拍摄成功:', res.tempImagePath)
+
+          try {
+            // 更新当前图片
+            setCurrentImage(res.tempImagePath)
+
+            // 本地评估
+            const result = await evaluatePhotoLocally(res.tempImagePath)
+            console.log('✅ 评估完成 - 总分:', result.total_score)
+
+            setEvaluation(result)
+            setMode('captured')
+
+            Taro.hideLoading()
+            Taro.showToast({title: '拍摄成功', icon: 'success', duration: 1500})
+          } catch (error) {
+            console.error('❌ 评估失败:', error)
+            Taro.hideLoading()
+            Taro.showToast({title: '评估失败', icon: 'none'})
+          }
+        },
+        fail: (err: any) => {
+          console.error('❌ 拍摄失败:', err)
+          Taro.hideLoading()
+          Taro.showToast({title: '拍摄失败，请重试', icon: 'none'})
+        }
+      })
+    } catch (error) {
+      console.error('❌ 拍摄异常:', error)
+      Taro.hideLoading()
+      Taro.showToast({title: '拍摄异常', icon: 'none'})
+    }
+  }, [initCamera])
+
   // 保存评估结果
   const saveEvaluation = useCallback(async () => {
     if (!currentImage || !evaluation) {
@@ -239,7 +290,32 @@ export default function CameraPage() {
     try {
       Taro.showLoading({title: '保存中...'})
 
-      // 上传照片
+      // 1. 先保存到手机相册
+      try {
+        await Taro.saveImageToPhotosAlbum({
+          filePath: currentImage
+        })
+        console.log('✅ 已保存到相册')
+      } catch (error: any) {
+        console.error('❌ 保存到相册失败:', error)
+        // 如果是权限问题，提示用户
+        if (error.errMsg?.includes('auth')) {
+          Taro.hideLoading()
+          Taro.showModal({
+            title: '需要相册权限',
+            content: '保存照片需要访问您的相册，请在设置中开启权限',
+            confirmText: '去设置',
+            success: (res) => {
+              if (res.confirm) {
+                Taro.openSetting()
+              }
+            }
+          })
+          return
+        }
+      }
+
+      // 2. 上传照片到云端
       const uploadResult = await uploadFile({
         path: currentImage,
         size: 0,
@@ -248,11 +324,11 @@ export default function CameraPage() {
 
       if (!uploadResult.success || !uploadResult.url) {
         Taro.hideLoading()
-        Taro.showToast({title: '照片保存失败', icon: 'none'})
+        Taro.showToast({title: '照片上传失败', icon: 'none'})
         return
       }
 
-      // 保存评估记录
+      // 3. 保存评估记录
       const record = await createEvaluation({
         photo_url: uploadResult.url,
         evaluation_type: 'realtime',
@@ -349,16 +425,17 @@ export default function CameraPage() {
 
                 {/* 实时建议 */}
                 {realtimeSuggestions.length > 0 && (
-                  <View className="bg-black/70 rounded-xl p-4">
-                    <View className="flex flex-row items-center mb-2">
-                      <View className="i-mdi-lightbulb-on text-lg text-primary mr-2" />
-                      <Text className="text-sm font-semibold text-white">实时建议</Text>
+                  <View className="bg-black/80 rounded-2xl p-5 border-2 border-primary/50">
+                    <View className="flex flex-row items-center mb-3">
+                      <View className="i-mdi-lightbulb-on text-2xl text-primary mr-2" />
+                      <Text className="text-base font-bold text-white">实时建议</Text>
                     </View>
-                    <View className="space-y-1">
+                    <View className="space-y-2">
                       {realtimeSuggestions.map((suggestion, index) => (
-                        <Text key={index} className="text-sm text-white leading-relaxed">
-                          • {suggestion}
-                        </Text>
+                        <View key={index} className="flex flex-row items-start">
+                          <View className="i-mdi-chevron-right text-lg text-primary mr-1 mt-0.5" />
+                          <Text className="text-base text-white font-medium leading-relaxed flex-1">{suggestion}</Text>
+                        </View>
                       ))}
                     </View>
                   </View>
@@ -401,12 +478,20 @@ export default function CameraPage() {
           {/* 底部操作按钮 */}
           <View className="absolute bottom-8 left-0 right-0 px-6">
             {!isEvaluating ? (
-              <Button
-                className="w-full bg-gradient-primary text-white py-4 rounded-xl break-keep text-base shadow-elegant"
-                size="default"
-                onClick={startEvaluation}>
-                开始实时评估
-              </Button>
+              <View className="space-y-3">
+                <Button
+                  className="w-full bg-gradient-primary text-white py-4 rounded-xl break-keep text-base shadow-elegant"
+                  size="default"
+                  onClick={startEvaluation}>
+                  开始实时评估
+                </Button>
+                <Button
+                  className="w-full bg-card text-foreground py-4 rounded-xl border border-border break-keep text-base"
+                  size="default"
+                  onClick={directCapture}>
+                  直接拍摄
+                </Button>
+              </View>
             ) : (
               <View className="space-y-3">
                 <Button
