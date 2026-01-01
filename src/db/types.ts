@@ -2,6 +2,15 @@
 
 export type EvaluationType = 'realtime' | 'upload'
 export type SceneType = 'portrait' | 'landscape' | 'group' | 'other'
+export type UserRole = 'user' | 'admin'
+
+export interface Profile {
+  id: string
+  username: string | null
+  openid: string | null
+  role: UserRole
+  created_at: string
+}
 
 export interface PhotoEvaluation {
   id: string
@@ -21,6 +30,7 @@ export interface PhotoEvaluation {
     height?: string
   } | null
   scene_type: SceneType | null
+  user_id: string | null // 用户ID，未登录用户为NULL
   created_at: string
 }
 
@@ -41,4 +51,5 @@ export interface CreateEvaluationInput {
     height?: string
   }
   scene_type?: SceneType
+  user_id?: string // 用户ID，未登录时不传
 }

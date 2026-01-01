@@ -2,6 +2,7 @@ import {Button, Camera, Image, ScrollView, Text, View} from '@tarojs/components'
 import Taro, {useDidShow} from '@tarojs/taro'
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {createEvaluation} from '@/db/api'
+import {getCurrentUserId} from '@/utils/auth'
 import type {LocalEvaluationResult} from '@/utils/localEvaluation'
 import {evaluatePhotoLocally} from '@/utils/localEvaluation'
 
@@ -341,6 +342,24 @@ export default function CameraPage() {
     try {
       Taro.showLoading({title: '保存中...'})
 
+      // 获取当前用户ID（如果已登录）
+      const userId = await getCurrentUserId()
+
+      // 如果未登录，提示用户
+      if (!userId) {
+        Taro.hideLoading()
+        Taro.showModal({
+          title: '提示',
+          content: '登录后可保存评估记录，是否前往登录？',
+          success: (res) => {
+            if (res.confirm) {
+              Taro.navigateTo({url: '/pages/login/index'})
+            }
+          }
+        })
+        return
+      }
+
       // 保存评估记录（不上传照片，保护用户隐私）
       const record = await createEvaluation({
         // photo_url不传，保护用户隐私
@@ -352,7 +371,8 @@ export default function CameraPage() {
         distance_score: evaluation.distance_score,
         height_score: evaluation.height_score,
         suggestions: evaluation.suggestions,
-        scene_type: evaluation.scene_type as 'portrait' | 'landscape' | 'group' | 'other' | undefined
+        scene_type: evaluation.scene_type as 'portrait' | 'landscape' | 'group' | 'other' | undefined,
+        user_id: userId // 关联用户ID
       })
 
       Taro.hideLoading()

@@ -1,30 +1,23 @@
 import {ScrollView, Text, View} from '@tarojs/components'
 import Taro, {useDidShow} from '@tarojs/taro'
 import {useCallback, useState} from 'react'
-import {getEvaluationStats} from '@/db/api'
+import type {Profile} from '@/db/types'
+import {getCurrentUser, navigateToLogin} from '@/utils/auth'
 
 export default function Home() {
-  const [stats, setStats] = useState({
-    total: 0,
-    avgScore: 0,
-    realtimeCount: 0,
-    uploadCount: 0
-  })
+  const [user, setUser] = useState<Profile | null>(null)
 
-  const loadStats = useCallback(async () => {
+  const loadUser = useCallback(async () => {
     try {
-      const data = await getEvaluationStats()
-      if (data) {
-        setStats(data)
-      }
+      const userData = await getCurrentUser()
+      setUser(userData)
     } catch (error) {
-      console.error('加载统计信息失败:', error)
-      // 保持默认值，不影响页面渲染
+      console.error('加载用户信息失败:', error)
     }
   }, [])
 
   useDidShow(() => {
-    loadStats()
+    loadUser()
   })
 
   const handleRealtimeMode = () => {
@@ -39,6 +32,10 @@ export default function Home() {
     Taro.navigateTo({url: '/pages/history/index'})
   }
 
+  const handleLogin = () => {
+    navigateToLogin()
+  }
+
   return (
     <View className="min-h-screen bg-gradient-dark">
       <ScrollView scrollY style={{height: '100vh', background: 'transparent'}}>
@@ -49,28 +46,34 @@ export default function Home() {
             <Text className="text-3xl font-bold text-white text-center mb-2">智能摄影助手</Text>
             <Text className="text-base text-muted-foreground text-center">AI驱动的专业摄影指导工具</Text>
           </View>
-        </View>
 
-        {/* 统计卡片 */}
-        <View className="px-6 mb-8">
-          <View className="bg-card rounded-2xl p-6 shadow-card">
-            <View className="flex flex-row justify-around">
-              <View className="flex flex-col items-center">
-                <Text className="text-3xl font-bold gradient-text mb-1">{stats.total}</Text>
-                <Text className="text-sm text-muted-foreground">总评估</Text>
-              </View>
-              <View className="w-px bg-border" />
-              <View className="flex flex-col items-center">
-                <Text className="text-3xl font-bold text-secondary mb-1">{stats.avgScore}</Text>
-                <Text className="text-sm text-muted-foreground">平均分</Text>
-              </View>
-              <View className="w-px bg-border" />
-              <View className="flex flex-col items-center">
-                <Text className="text-3xl font-bold text-accent mb-1">{stats.realtimeCount}</Text>
-                <Text className="text-sm text-muted-foreground">实时拍摄</Text>
+          {/* 用户信息 */}
+          {user ? (
+            <View className="mt-6 bg-card rounded-2xl p-4 shadow-card border border-border">
+              <View className="flex flex-row items-center">
+                <View className="i-mdi-account-circle text-3xl text-primary mr-3" />
+                <View className="flex-1">
+                  <Text className="text-base font-semibold text-foreground">
+                    {user.username || `用户${user.id.slice(0, 8)}`}
+                  </Text>
+                  <Text className="text-xs text-muted-foreground">已登录</Text>
+                </View>
               </View>
             </View>
-          </View>
+          ) : (
+            <View className="mt-6 bg-card rounded-2xl p-4 shadow-card border border-border" onClick={handleLogin}>
+              <View className="flex flex-row items-center justify-between">
+                <View className="flex flex-row items-center">
+                  <View className="i-mdi-account-circle text-3xl text-muted-foreground mr-3" />
+                  <View>
+                    <Text className="text-base font-semibold text-foreground">未登录</Text>
+                    <Text className="text-xs text-muted-foreground">登录以保存评估记录</Text>
+                  </View>
+                </View>
+                <View className="i-mdi-chevron-right text-2xl text-muted-foreground" />
+              </View>
+            </View>
+          )}
         </View>
 
         {/* 功能卡片 */}

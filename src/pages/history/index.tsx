@@ -3,14 +3,26 @@ import Taro, {useDidShow} from '@tarojs/taro'
 import {useCallback, useState} from 'react'
 import {getRecentEvaluations} from '@/db/api'
 import type {PhotoEvaluation} from '@/db/types'
+import {isLoggedIn, navigateToLogin} from '@/utils/auth'
 
 export default function HistoryPage() {
   const [evaluations, setEvaluations] = useState<PhotoEvaluation[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'realtime' | 'upload'>('all')
+  const [loggedIn, setLoggedIn] = useState(false)
 
   const loadEvaluations = useCallback(async () => {
     setLoading(true)
+
+    // 检查登录状态
+    const loginStatus = await isLoggedIn()
+    setLoggedIn(loginStatus)
+
+    if (!loginStatus) {
+      setLoading(false)
+      return
+    }
+
     const data = await getRecentEvaluations(50)
     setLoading(false)
     setEvaluations(data)
@@ -24,6 +36,10 @@ export default function HistoryPage() {
     Taro.navigateTo({url: `/pages/result/index?id=${id}`})
   }
 
+  const handleLogin = () => {
+    navigateToLogin('/pages/history/index')
+  }
+
   const getTypeText = (type: string) => {
     return type === 'realtime' ? '实时拍摄' : '上传照片'
   }
@@ -34,6 +50,28 @@ export default function HistoryPage() {
 
   const filteredEvaluations =
     filter === 'all' ? evaluations : evaluations.filter((item) => item.evaluation_type === filter)
+
+  // 未登录状态
+  if (!loggedIn && !loading) {
+    return (
+      <View className="min-h-screen bg-gradient-dark">
+        <ScrollView scrollY style={{height: '100vh', background: 'transparent'}}>
+          <View className="px-6 py-8">
+            <View className="flex flex-col items-center justify-center" style={{minHeight: '60vh'}}>
+              <View className="i-mdi-account-lock text-8xl text-muted-foreground mb-6" />
+              <Text className="text-2xl font-bold text-white mb-3">需要登录</Text>
+              <Text className="text-base text-muted-foreground mb-8 text-center">
+                登录后可以查看您的评估记录{'\n'}未登录也可以正常使用拍照和评估功能
+              </Text>
+              <View className="bg-primary px-8 py-4 rounded-xl" onClick={handleLogin}>
+                <Text className="text-white font-semibold">立即登录</Text>
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+      </View>
+    )
+  }
 
   return (
     <View className="min-h-screen bg-gradient-dark">

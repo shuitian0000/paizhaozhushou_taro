@@ -4,6 +4,7 @@ import {useCallback, useState} from 'react'
 import {supabase} from '@/client/supabase'
 import {createEvaluation} from '@/db/api'
 import {imageToBase64} from '@/utils/ai'
+import {getCurrentUserId} from '@/utils/auth'
 import {chooseImage, type UploadFileInput} from '@/utils/upload'
 
 export default function UploadPage() {
@@ -58,6 +59,25 @@ export default function UploadPage() {
       // 保存评估记录（不保存照片URL，保护用户隐私）
       Taro.showLoading({title: '保存中...'})
 
+      // 获取当前用户ID（如果已登录）
+      const userId = await getCurrentUserId()
+
+      // 如果未登录，提示用户
+      if (!userId) {
+        Taro.hideLoading()
+        setAnalyzing(false)
+        Taro.showModal({
+          title: '提示',
+          content: '登录后可保存评估记录，是否前往登录？',
+          success: (res) => {
+            if (res.confirm) {
+              Taro.navigateTo({url: '/pages/login/index'})
+            }
+          }
+        })
+        return
+      }
+
       const evaluation = await createEvaluation({
         // photo_url不传，保护用户隐私
         evaluation_type: 'upload',
@@ -68,7 +88,8 @@ export default function UploadPage() {
         distance_score: data.distance_score,
         height_score: data.height_score,
         suggestions: data.suggestions,
-        scene_type: data.scene_type
+        scene_type: data.scene_type,
+        user_id: userId // 关联用户ID
       })
 
       Taro.hideLoading()
