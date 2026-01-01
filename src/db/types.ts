@@ -5,7 +5,7 @@ export type SceneType = 'portrait' | 'landscape' | 'group' | 'other'
 
 export interface PhotoEvaluation {
   id: string
-  photo_url: string
+  photo_url: string | null // 可选，为保护隐私不强制保存
   evaluation_type: EvaluationType
   total_score: number
   composition_score: number | null
@@ -25,7 +25,7 @@ export interface PhotoEvaluation {
 }
 
 export interface CreateEvaluationInput {
-  photo_url: string
+  photo_url?: string // 可选，为保护隐私不强制保存
   evaluation_type: EvaluationType
   total_score: number
   composition_score?: number

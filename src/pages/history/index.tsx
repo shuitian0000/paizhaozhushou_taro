@@ -1,4 +1,4 @@
-import {Image, ScrollView, Text, View} from '@tarojs/components'
+import {ScrollView, Text, View} from '@tarojs/components'
 import Taro, {useDidShow} from '@tarojs/taro'
 import {useCallback, useState} from 'react'
 import {getRecentEvaluations} from '@/db/api'
@@ -86,53 +86,40 @@ export default function HistoryPage() {
                   key={item.id}
                   className="bg-card rounded-2xl overflow-hidden shadow-card"
                   onClick={() => handleViewDetail(item.id)}>
-                  <View className="flex flex-row">
-                    {/* 照片缩略图 */}
-                    <Image src={item.photo_url} mode="aspectFill" className="w-28 h-28 bg-muted" />
-
-                    {/* 信息 */}
-                    <View className="flex-1 p-4">
-                      <View className="flex flex-row items-center justify-between mb-2">
-                        <View className={`${getTypeColor(item.evaluation_type)} rounded-full px-3 py-1`}>
-                          <Text className="text-xs text-white">{getTypeText(item.evaluation_type)}</Text>
-                        </View>
-                        <View className="flex flex-row items-center">
-                          <Text className="text-2xl font-bold text-primary mr-1">{item.total_score}</Text>
-                          <Text className="text-xs text-muted-foreground">分</Text>
-                        </View>
+                  <View className="p-5">
+                    {/* 头部信息 */}
+                    <View className="flex flex-row items-center justify-between mb-4">
+                      <View className={`${getTypeColor(item.evaluation_type)} rounded-full px-3 py-1`}>
+                        <Text className="text-xs text-white">{getTypeText(item.evaluation_type)}</Text>
                       </View>
-
-                      {/* 评分条 */}
-                      <View className="space-y-1 mb-2">
-                        {item.composition_score !== null && (
-                          <View className="flex flex-row items-center">
-                            <Text className="text-xs text-muted-foreground w-12">构图</Text>
-                            <View className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                              <View
-                                className="h-full bg-primary rounded-full"
-                                style={{
-                                  width: `${(item.composition_score / 30) * 100}%`
-                                }}
-                              />
-                            </View>
-                          </View>
-                        )}
-                        {item.pose_score !== null && (
-                          <View className="flex flex-row items-center">
-                            <Text className="text-xs text-muted-foreground w-12">姿态</Text>
-                            <View className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                              <View
-                                className="h-full bg-secondary rounded-full"
-                                style={{
-                                  width: `${(item.pose_score / 30) * 100}%`
-                                }}
-                              />
-                            </View>
-                          </View>
-                        )}
+                      <View className="flex flex-row items-center">
+                        <Text className="text-3xl font-bold text-primary mr-1">{item.total_score}</Text>
+                        <Text className="text-sm text-muted-foreground">分</Text>
                       </View>
+                    </View>
 
-                      {/* 时间 */}
+                    {/* 评分详情 */}
+                    <View className="flex flex-row flex-wrap gap-3 mb-3">
+                      <View className="flex flex-row items-center">
+                        <View className="i-mdi-grid text-base text-primary mr-1" />
+                        <Text className="text-xs text-muted-foreground">构图 {item.composition_score || 0}</Text>
+                      </View>
+                      <View className="flex flex-row items-center">
+                        <View className="i-mdi-angle-acute text-base text-secondary mr-1" />
+                        <Text className="text-xs text-muted-foreground">角度 {item.angle_score || 0}</Text>
+                      </View>
+                      <View className="flex flex-row items-center">
+                        <View className="i-mdi-arrow-expand-horizontal text-base text-accent mr-1" />
+                        <Text className="text-xs text-muted-foreground">距离 {item.distance_score || 0}</Text>
+                      </View>
+                      <View className="flex flex-row items-center">
+                        <View className="i-mdi-white-balance-sunny text-base text-yellow-500 mr-1" />
+                        <Text className="text-xs text-muted-foreground">光线 {item.height_score || 0}</Text>
+                      </View>
+                    </View>
+
+                    {/* 时间和场景 */}
+                    <View className="flex flex-row items-center justify-between mb-3">
                       <Text className="text-xs text-muted-foreground">
                         {new Date(item.created_at).toLocaleString('zh-CN', {
                           month: '2-digit',
@@ -141,15 +128,32 @@ export default function HistoryPage() {
                           minute: '2-digit'
                         })}
                       </Text>
+                      {item.scene_type && (
+                        <View className="flex flex-row items-center">
+                          <View className="i-mdi-tag text-xs text-muted-foreground mr-1" />
+                          <Text className="text-xs text-muted-foreground">
+                            {item.scene_type === 'portrait'
+                              ? '人像'
+                              : item.scene_type === 'landscape'
+                                ? '风景'
+                                : item.scene_type === 'group'
+                                  ? '合影'
+                                  : '其他'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* 隐私保护提示 */}
+                    <View className="flex flex-row items-center pt-3 border-t border-border">
+                      <View className="i-mdi-shield-check text-xs text-primary mr-1" />
+                      <Text className="text-xs text-muted-foreground">照片未保存，仅保留评估结果</Text>
                     </View>
                   </View>
                 </View>
               ))}
             </View>
           )}
-
-          {/* 底部间距 */}
-          <View className="h-20" />
         </View>
       </ScrollView>
     </View>

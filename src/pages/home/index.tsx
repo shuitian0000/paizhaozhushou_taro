@@ -83,7 +83,14 @@ export default function Home() {
                   <View className="i-mdi-camera text-3xl text-white mr-3" />
                   <Text className="text-2xl font-bold text-white">拍照助手</Text>
                 </View>
-                <Text className="text-sm text-white opacity-90 mb-3">实时分析取景画面，提供即时建议和评分</Text>
+                <Text className="text-sm text-white opacity-90 mb-2">实时分析取景画面，提供即时建议和评分</Text>
+
+                {/* 隐私保护提示 */}
+                <View className="flex flex-row items-center mb-3 bg-white bg-opacity-15 rounded-lg px-3 py-2">
+                  <View className="i-mdi-shield-check text-base text-white mr-2" />
+                  <Text className="text-xs text-white font-medium">照片仅保存到您的手机相册，不上传云端</Text>
+                </View>
+
                 <View className="flex flex-row flex-wrap gap-2">
                   <View className="bg-white bg-opacity-20 rounded-full px-3 py-1">
                     <Text className="text-xs text-white">实时评分</Text>
@@ -108,7 +115,14 @@ export default function Home() {
                   <View className="i-mdi-image-search text-3xl text-white mr-3" />
                   <Text className="text-2xl font-bold text-white">照片评估</Text>
                 </View>
-                <Text className="text-sm text-white opacity-90 mb-3">上传已拍摄照片，获取详细评估报告</Text>
+                <Text className="text-sm text-white opacity-90 mb-2">上传已拍摄照片，获取详细评估报告</Text>
+
+                {/* 隐私保护提示 */}
+                <View className="flex flex-row items-center mb-3 bg-white bg-opacity-15 rounded-lg px-3 py-2">
+                  <View className="i-mdi-shield-lock text-base text-white mr-2" />
+                  <Text className="text-xs text-white font-medium">照片仅用于AI分析，不会存储或泄露</Text>
+                </View>
+
                 <View className="flex flex-row flex-wrap gap-2">
                   <View className="bg-white bg-opacity-20 rounded-full px-3 py-1">
                     <Text className="text-xs text-white">综合评分</Text>

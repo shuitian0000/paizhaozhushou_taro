@@ -1,4 +1,4 @@
-import {Button, Image, ScrollView, Text, View} from '@tarojs/components'
+import {Button, ScrollView, Text, View} from '@tarojs/components'
 import Taro, {useDidShow, useRouter} from '@tarojs/taro'
 import {useCallback, useState} from 'react'
 import {getEvaluationById} from '@/db/api'
@@ -107,14 +107,15 @@ export default function ResultPage() {
     <View className="min-h-screen bg-gradient-dark">
       <ScrollView scrollY style={{height: '100vh', background: 'transparent'}}>
         <View className="px-6 py-8">
-          {/* 照片预览 */}
-          <View className="mb-6">
-            <Image
-              src={evaluation.photo_url}
-              mode="aspectFit"
-              className="w-full rounded-2xl bg-card shadow-card"
-              style={{height: '300px'}}
-            />
+          {/* 隐私保护提示 */}
+          <View className="bg-card rounded-2xl p-4 mb-6 shadow-card border border-primary/30">
+            <View className="flex flex-row items-center">
+              <View className="i-mdi-shield-check text-2xl text-primary mr-3" />
+              <View className="flex-1">
+                <Text className="text-sm font-semibold text-foreground mb-1">隐私保护</Text>
+                <Text className="text-xs text-muted-foreground">您的照片未保存到云端，仅保留评估结果</Text>
+              </View>
+            </View>
           </View>
 
           {/* 总分卡片 */}

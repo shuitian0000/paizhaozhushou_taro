@@ -4,7 +4,7 @@ import {useCallback, useState} from 'react'
 import {supabase} from '@/client/supabase'
 import {createEvaluation} from '@/db/api'
 import {imageToBase64} from '@/utils/ai'
-import {chooseImage, type UploadFileInput, uploadFile} from '@/utils/upload'
+import {chooseImage, type UploadFileInput} from '@/utils/upload'
 
 export default function UploadPage() {
   const [selectedImage, setSelectedImage] = useState<UploadFileInput | null>(null)
@@ -37,7 +37,7 @@ export default function UploadPage() {
       // 转换为Base64
       const base64Image = await imageToBase64(selectedImage.path)
 
-      // 调用Edge Function分析
+      // 调用Edge Function分析（照片仅用于分析，不保存）
       const {data, error} = await supabase.functions.invoke('analyze-photo', {
         body: JSON.stringify({
           imageBase64: base64Image,
@@ -55,26 +55,11 @@ export default function UploadPage() {
         return
       }
 
-      // 上传照片
-      setUploading(true)
+      // 保存评估记录（不保存照片URL，保护用户隐私）
       Taro.showLoading({title: '保存中...'})
 
-      const uploadResult = await uploadFile({
-        ...selectedImage,
-        name: `upload_${Date.now()}.jpg`
-      })
-
-      if (!uploadResult.success || !uploadResult.url) {
-        Taro.hideLoading()
-        Taro.showToast({title: '照片保存失败', icon: 'none'})
-        setUploading(false)
-        setAnalyzing(false)
-        return
-      }
-
-      // 保存评估记录
       const evaluation = await createEvaluation({
-        photo_url: uploadResult.url,
+        // photo_url不传，保护用户隐私
         evaluation_type: 'upload',
         total_score: data.total_score || 70,
         composition_score: data.composition_score,
@@ -87,7 +72,6 @@ export default function UploadPage() {
       })
 
       Taro.hideLoading()
-      setUploading(false)
       setAnalyzing(false)
 
       if (evaluation) {

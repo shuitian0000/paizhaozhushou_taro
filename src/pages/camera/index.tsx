@@ -4,7 +4,6 @@ import {useCallback, useEffect, useRef, useState} from 'react'
 import {createEvaluation} from '@/db/api'
 import type {LocalEvaluationResult} from '@/utils/localEvaluation'
 import {evaluatePhotoLocally} from '@/utils/localEvaluation'
-import {uploadFile} from '@/utils/upload'
 
 export default function CameraPage() {
   const [mode, setMode] = useState<'preview' | 'captured'>('preview')
@@ -332,7 +331,7 @@ export default function CameraPage() {
     }
   }, [initCamera])
 
-  // 保存评估结果（上传云端和保存记录）
+  // 保存评估结果（只保存评估记录，不上传照片）
   const saveEvaluation = useCallback(async () => {
     if (!currentImage || !evaluation) {
       Taro.showToast({title: '没有可保存的评估', icon: 'none'})
@@ -340,24 +339,11 @@ export default function CameraPage() {
     }
 
     try {
-      Taro.showLoading({title: '上传中...'})
+      Taro.showLoading({title: '保存中...'})
 
-      // 上传照片到云端
-      const uploadResult = await uploadFile({
-        path: currentImage,
-        size: 0,
-        name: `realtime_${Date.now()}.jpg`
-      })
-
-      if (!uploadResult.success || !uploadResult.url) {
-        Taro.hideLoading()
-        Taro.showToast({title: '照片上传失败', icon: 'none'})
-        return
-      }
-
-      // 保存评估记录
+      // 保存评估记录（不上传照片，保护用户隐私）
       const record = await createEvaluation({
-        photo_url: uploadResult.url,
+        // photo_url不传，保护用户隐私
         evaluation_type: 'realtime',
         total_score: evaluation.total_score,
         composition_score: evaluation.composition_score,
