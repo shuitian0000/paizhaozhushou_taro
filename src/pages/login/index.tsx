@@ -44,6 +44,16 @@ export default function LoginPage() {
 
     if (loading) return
 
+    // 检查是否在微信小程序环境
+    if (Taro.getEnv() !== Taro.ENV_TYPE.WEAPP) {
+      Taro.showToast({
+        title: '微信登录仅在小程序中可用，请使用用户名密码登录',
+        icon: 'none',
+        duration: 2500
+      })
+      return
+    }
+
     setLoading(true)
     const result = await wechatLogin()
     setLoading(false)
@@ -54,7 +64,16 @@ export default function LoginPage() {
         handleLoginSuccess()
       }, 1000)
     } else {
-      Taro.showToast({title: result.message || '登录失败', icon: 'none', duration: 2000})
+      // 检查是否是配置问题
+      if (result.message?.includes('invalid appid') || result.message?.includes('appid')) {
+        Taro.showModal({
+          title: '配置提示',
+          content: '微信小程序登录功能需要配置AppID和AppSecret。请联系管理员在Supabase后台配置环境变量。',
+          showCancel: false
+        })
+      } else {
+        Taro.showToast({title: result.message || '登录失败', icon: 'none', duration: 2000})
+      }
     }
   }, [agreed, loading, handleLoginSuccess])
 

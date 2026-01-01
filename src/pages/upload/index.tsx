@@ -56,52 +56,61 @@ export default function UploadPage() {
         return
       }
 
-      // 保存评估记录（不保存照片URL，保护用户隐私）
-      Taro.showLoading({title: '保存中...'})
-
       // 获取当前用户ID（如果已登录）
       const userId = await getCurrentUserId()
 
-      // 如果未登录，提示用户
-      if (!userId) {
+      // 如果已登录，保存评估记录
+      if (userId) {
+        Taro.showLoading({title: '保存中...'})
+
+        const evaluation = await createEvaluation({
+          // photo_url不传，保护用户隐私
+          evaluation_type: 'upload',
+          total_score: data.total_score || 70,
+          composition_score: data.composition_score,
+          pose_score: data.pose_score,
+          angle_score: data.angle_score,
+          distance_score: data.distance_score,
+          height_score: data.height_score,
+          suggestions: data.suggestions,
+          scene_type: data.scene_type,
+          user_id: userId // 关联用户ID
+        })
+
         Taro.hideLoading()
         setAnalyzing(false)
-        Taro.showModal({
-          title: '提示',
-          content: '登录后可保存评估记录，是否前往登录？',
-          success: (res) => {
-            if (res.confirm) {
-              Taro.navigateTo({url: '/pages/login/index'})
-            }
-          }
-        })
-        return
-      }
 
-      const evaluation = await createEvaluation({
-        // photo_url不传，保护用户隐私
-        evaluation_type: 'upload',
-        total_score: data.total_score || 70,
-        composition_score: data.composition_score,
-        pose_score: data.pose_score,
-        angle_score: data.angle_score,
-        distance_score: data.distance_score,
-        height_score: data.height_score,
-        suggestions: data.suggestions,
-        scene_type: data.scene_type,
-        user_id: userId // 关联用户ID
-      })
-
-      Taro.hideLoading()
-      setAnalyzing(false)
-
-      if (evaluation) {
-        // 跳转到结果页面
-        Taro.navigateTo({
-          url: `/pages/result/index?id=${evaluation.id}`
-        })
+        if (evaluation) {
+          // 跳转到结果页面
+          Taro.navigateTo({
+            url: `/pages/result/index?id=${evaluation.id}`
+          })
+        } else {
+          Taro.showToast({title: '保存失败', icon: 'none'})
+        }
       } else {
-        Taro.showToast({title: '保存失败', icon: 'none'})
+        // 未登录用户：直接显示分析结果，不保存记录
+        Taro.hideLoading()
+        setAnalyzing(false)
+
+        // 将分析结果存储到本地，用于结果页面显示
+        Taro.setStorageSync('tempEvaluationResult', {
+          total_score: data.total_score || 70,
+          composition_score: data.composition_score,
+          pose_score: data.pose_score,
+          angle_score: data.angle_score,
+          distance_score: data.distance_score,
+          height_score: data.height_score,
+          suggestions: data.suggestions,
+          scene_type: data.scene_type,
+          evaluation_type: 'upload',
+          created_at: new Date().toISOString()
+        })
+
+        // 跳转到结果页面（临时结果模式）
+        Taro.navigateTo({
+          url: '/pages/result/index?temp=1'
+        })
       }
     } catch (error) {
       console.error('分析失败:', error)

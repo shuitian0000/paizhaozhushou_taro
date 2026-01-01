@@ -340,27 +340,44 @@ export default function CameraPage() {
     }
 
     try {
-      Taro.showLoading({title: '保存中...'})
-
       // 获取当前用户ID（如果已登录）
       const userId = await getCurrentUserId()
 
-      // 如果未登录，提示用户
+      // 如果未登录，提示用户但仍然显示结果
       if (!userId) {
-        Taro.hideLoading()
         Taro.showModal({
           title: '提示',
-          content: '登录后可保存评估记录，是否前往登录？',
+          content: '登录后可保存评估记录到历史，当前仅查看结果。是否前往登录？',
           success: (res) => {
             if (res.confirm) {
               Taro.navigateTo({url: '/pages/login/index'})
+            } else {
+              // 用户选择不登录，直接显示临时结果
+              Taro.setStorageSync('tempEvaluationResult', {
+                total_score: evaluation.total_score,
+                composition_score: evaluation.composition_score,
+                pose_score: evaluation.pose_score,
+                angle_score: evaluation.angle_score,
+                distance_score: evaluation.distance_score,
+                height_score: evaluation.height_score,
+                suggestions: evaluation.suggestions,
+                scene_type: evaluation.scene_type,
+                evaluation_type: 'realtime',
+                created_at: new Date().toISOString()
+              })
+
+              Taro.navigateTo({
+                url: '/pages/result/index?temp=1'
+              })
             }
           }
         })
         return
       }
 
-      // 保存评估记录（不上传照片，保护用户隐私）
+      // 已登录：保存评估记录
+      Taro.showLoading({title: '保存中...'})
+
       const record = await createEvaluation({
         // photo_url不传，保护用户隐私
         evaluation_type: 'realtime',

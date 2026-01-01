@@ -7,11 +7,32 @@ import type {PhotoEvaluation} from '@/db/types'
 export default function ResultPage() {
   const [evaluation, setEvaluation] = useState<PhotoEvaluation | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isTemp, setIsTemp] = useState(false) // 是否为临时结果（未登录用户）
   const router = useRouter()
 
   const loadEvaluation = useCallback(async () => {
     const id = router.params.id
+    const temp = router.params.temp
 
+    // 如果是临时结果模式（未登录用户）
+    if (temp === '1') {
+      setIsTemp(true)
+      const tempResult = Taro.getStorageSync('tempEvaluationResult')
+      if (tempResult) {
+        setEvaluation(tempResult as PhotoEvaluation)
+        setLoading(false)
+        // 清除临时数据
+        Taro.removeStorageSync('tempEvaluationResult')
+      } else {
+        Taro.showToast({title: '数据加载失败', icon: 'none'})
+        setTimeout(() => {
+          Taro.navigateBack()
+        }, 1500)
+      }
+      return
+    }
+
+    // 正常模式：从数据库加载
     if (!id) {
       Taro.showToast({title: '参数错误', icon: 'none'})
       setTimeout(() => {
@@ -29,7 +50,7 @@ export default function ResultPage() {
     } else {
       Taro.showToast({title: '加载失败', icon: 'none'})
     }
-  }, [router.params.id])
+  }, [router.params.id, router.params.temp])
 
   useDidShow(() => {
     loadEvaluation()
@@ -107,16 +128,28 @@ export default function ResultPage() {
     <View className="min-h-screen bg-gradient-dark">
       <ScrollView scrollY style={{height: '100vh', background: 'transparent'}}>
         <View className="px-6 py-8">
-          {/* 隐私保护提示 */}
-          <View className="bg-card rounded-2xl p-4 mb-6 shadow-card border border-primary/30">
-            <View className="flex flex-row items-center">
-              <View className="i-mdi-shield-check text-2xl text-primary mr-3" />
-              <View className="flex-1">
-                <Text className="text-sm font-semibold text-foreground mb-1">隐私保护</Text>
-                <Text className="text-xs text-muted-foreground">您的照片未保存到云端，仅保留评估结果</Text>
+          {/* 隐私保护提示或未登录提示 */}
+          {isTemp ? (
+            <View className="bg-card rounded-2xl p-4 mb-6 shadow-card border border-orange-500/30">
+              <View className="flex flex-row items-center">
+                <View className="i-mdi-alert-circle text-2xl text-orange-500 mr-3" />
+                <View className="flex-1">
+                  <Text className="text-sm font-semibold text-foreground mb-1">未登录</Text>
+                  <Text className="text-xs text-muted-foreground">评估结果未保存，登录后可保存历史记录</Text>
+                </View>
               </View>
             </View>
-          </View>
+          ) : (
+            <View className="bg-card rounded-2xl p-4 mb-6 shadow-card border border-primary/30">
+              <View className="flex flex-row items-center">
+                <View className="i-mdi-shield-check text-2xl text-primary mr-3" />
+                <View className="flex-1">
+                  <Text className="text-sm font-semibold text-foreground mb-1">隐私保护</Text>
+                  <Text className="text-xs text-muted-foreground">您的照片未保存到云端，仅保留评估结果</Text>
+                </View>
+              </View>
+            </View>
+          )}
 
           {/* 总分卡片 */}
           <View className="bg-gradient-primary rounded-2xl p-6 mb-6 shadow-elegant">
