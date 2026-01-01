@@ -76,31 +76,36 @@ export async function getEvaluationStats(): Promise<{
   realtimeCount: number
   uploadCount: number
 } | null> {
-  const {data, error} = await supabase.from('photo_evaluations').select('total_score, evaluation_type')
+  try {
+    const {data, error} = await supabase.from('photo_evaluations').select('total_score, evaluation_type')
 
-  if (error) {
-    console.error('获取统计信息失败:', error)
-    return null
-  }
-
-  if (!data || data.length === 0) {
-    return {
-      total: 0,
-      avgScore: 0,
-      realtimeCount: 0,
-      uploadCount: 0
+    if (error) {
+      console.error('获取统计信息失败:', error)
+      return null
     }
-  }
 
-  const total = data.length
-  const avgScore = Math.round(data.reduce((sum, item) => sum + item.total_score, 0) / total)
-  const realtimeCount = data.filter((item) => item.evaluation_type === 'realtime').length
-  const uploadCount = data.filter((item) => item.evaluation_type === 'upload').length
+    if (!data || data.length === 0) {
+      return {
+        total: 0,
+        avgScore: 0,
+        realtimeCount: 0,
+        uploadCount: 0
+      }
+    }
 
-  return {
-    total,
-    avgScore,
-    realtimeCount,
-    uploadCount
+    const total = data.length
+    const avgScore = Math.round(data.reduce((sum, item) => sum + item.total_score, 0) / total)
+    const realtimeCount = data.filter((item) => item.evaluation_type === 'realtime').length
+    const uploadCount = data.filter((item) => item.evaluation_type === 'upload').length
+
+    return {
+      total,
+      avgScore,
+      realtimeCount,
+      uploadCount
+    }
+  } catch (error) {
+    console.error('获取统计信息异常:', error)
+    return null
   }
 }

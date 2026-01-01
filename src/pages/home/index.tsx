@@ -12,9 +12,14 @@ export default function Home() {
   })
 
   const loadStats = useCallback(async () => {
-    const data = await getEvaluationStats()
-    if (data) {
-      setStats(data)
+    try {
+      const data = await getEvaluationStats()
+      if (data) {
+        setStats(data)
+      }
+    } catch (error) {
+      console.error('加载统计信息失败:', error)
+      // 保持默认值，不影响页面渲染
     }
   }, [])
 
