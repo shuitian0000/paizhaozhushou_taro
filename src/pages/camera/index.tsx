@@ -203,15 +203,42 @@ export default function CameraPage() {
   }, [initCamera, performEvaluation])
 
   // 确认拍摄（保存当前照片）
-  const confirmCapture = useCallback(() => {
+  const confirmCapture = useCallback(async () => {
     console.log('✅ 确认拍摄')
     if (evaluationTimerRef.current) {
       clearInterval(evaluationTimerRef.current)
       evaluationTimerRef.current = null
     }
     setIsEvaluating(false)
+
+    // 立即保存到手机相册
+    if (currentImage) {
+      try {
+        await Taro.saveImageToPhotosAlbum({
+          filePath: currentImage
+        })
+        console.log('✅ 已保存到相册')
+        Taro.showToast({title: '照片已保存到相册', icon: 'success', duration: 2000})
+      } catch (error: any) {
+        console.error('❌ 保存到相册失败:', error)
+        // 如果是权限问题，提示用户
+        if (error.errMsg?.includes('auth')) {
+          Taro.showModal({
+            title: '需要相册权限',
+            content: '保存照片需要访问您的相册，请在设置中开启权限',
+            confirmText: '去设置',
+            success: (res) => {
+              if (res.confirm) {
+                Taro.openSetting()
+              }
+            }
+          })
+        }
+      }
+    }
+
     setMode('captured')
-  }, [])
+  }, [currentImage])
 
   // 重新开始
   const restart = useCallback(() => {
@@ -252,6 +279,31 @@ export default function CameraPage() {
             // 更新当前图片
             setCurrentImage(res.tempImagePath)
 
+            // 立即保存到手机相册
+            try {
+              await Taro.saveImageToPhotosAlbum({
+                filePath: res.tempImagePath
+              })
+              console.log('✅ 已保存到相册')
+            } catch (error: any) {
+              console.error('❌ 保存到相册失败:', error)
+              // 如果是权限问题，提示用户
+              if (error.errMsg?.includes('auth')) {
+                Taro.hideLoading()
+                Taro.showModal({
+                  title: '需要相册权限',
+                  content: '保存照片需要访问您的相册，请在设置中开启权限',
+                  confirmText: '去设置',
+                  success: (res) => {
+                    if (res.confirm) {
+                      Taro.openSetting()
+                    }
+                  }
+                })
+                return
+              }
+            }
+
             // 本地评估
             const result = await evaluatePhotoLocally(res.tempImagePath)
             console.log('✅ 评估完成 - 总分:', result.total_score)
@@ -260,7 +312,7 @@ export default function CameraPage() {
             setMode('captured')
 
             Taro.hideLoading()
-            Taro.showToast({title: '拍摄成功', icon: 'success', duration: 1500})
+            Taro.showToast({title: '拍摄成功并已保存到相册', icon: 'success', duration: 2000})
           } catch (error) {
             console.error('❌ 评估失败:', error)
             Taro.hideLoading()
@@ -280,7 +332,7 @@ export default function CameraPage() {
     }
   }, [initCamera])
 
-  // 保存评估结果
+  // 保存评估结果（上传云端和保存记录）
   const saveEvaluation = useCallback(async () => {
     if (!currentImage || !evaluation) {
       Taro.showToast({title: '没有可保存的评估', icon: 'none'})
@@ -288,34 +340,9 @@ export default function CameraPage() {
     }
 
     try {
-      Taro.showLoading({title: '保存中...'})
+      Taro.showLoading({title: '上传中...'})
 
-      // 1. 先保存到手机相册
-      try {
-        await Taro.saveImageToPhotosAlbum({
-          filePath: currentImage
-        })
-        console.log('✅ 已保存到相册')
-      } catch (error: any) {
-        console.error('❌ 保存到相册失败:', error)
-        // 如果是权限问题，提示用户
-        if (error.errMsg?.includes('auth')) {
-          Taro.hideLoading()
-          Taro.showModal({
-            title: '需要相册权限',
-            content: '保存照片需要访问您的相册，请在设置中开启权限',
-            confirmText: '去设置',
-            success: (res) => {
-              if (res.confirm) {
-                Taro.openSetting()
-              }
-            }
-          })
-          return
-        }
-      }
-
-      // 2. 上传照片到云端
+      // 上传照片到云端
       const uploadResult = await uploadFile({
         path: currentImage,
         size: 0,
@@ -328,7 +355,7 @@ export default function CameraPage() {
         return
       }
 
-      // 3. 保存评估记录
+      // 保存评估记录
       const record = await createEvaluation({
         photo_url: uploadResult.url,
         evaluation_type: 'realtime',
@@ -413,28 +440,53 @@ export default function CameraPage() {
             {isEvaluating && (
               <View>
                 {/* 评估计数 */}
-                <View className="bg-primary/90 rounded-xl p-3 mb-3">
+                <View className="bg-primary/70 rounded-xl p-3 mb-3">
                   <View className="flex flex-row items-center justify-between">
                     <View className="flex flex-row items-center">
-                      <View className="i-mdi-camera-timer text-lg text-white mr-2" />
-                      <Text className="text-sm text-white font-semibold">实时评估中...</Text>
+                      <View
+                        className="i-mdi-camera-timer text-lg text-white mr-2"
+                        style={{filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.8))'}}
+                      />
+                      <Text
+                        className="text-sm text-white font-semibold"
+                        style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                        实时评估中...
+                      </Text>
                     </View>
-                    <Text className="text-sm text-white font-semibold">已评估 {evaluationCount} 次</Text>
+                    <Text
+                      className="text-sm text-white font-semibold"
+                      style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                      已评估 {evaluationCount} 次
+                    </Text>
                   </View>
                 </View>
 
                 {/* 实时建议 */}
                 {realtimeSuggestions.length > 0 && (
-                  <View className="bg-black/80 rounded-2xl p-5 border-2 border-primary/50">
+                  <View className="bg-black/40 rounded-2xl p-5 border-2 border-primary/60">
                     <View className="flex flex-row items-center mb-3">
-                      <View className="i-mdi-lightbulb-on text-2xl text-primary mr-2" />
-                      <Text className="text-base font-bold text-white">实时建议</Text>
+                      <View
+                        className="i-mdi-lightbulb-on text-2xl text-primary mr-2"
+                        style={{filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.8))'}}
+                      />
+                      <Text
+                        className="text-base font-bold text-white"
+                        style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                        实时建议
+                      </Text>
                     </View>
                     <View className="space-y-2">
                       {realtimeSuggestions.map((suggestion, index) => (
                         <View key={index} className="flex flex-row items-start">
-                          <View className="i-mdi-chevron-right text-lg text-primary mr-1 mt-0.5" />
-                          <Text className="text-base text-white font-medium leading-relaxed flex-1">{suggestion}</Text>
+                          <View
+                            className="i-mdi-chevron-right text-lg text-primary mr-1 mt-0.5"
+                            style={{filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.8))'}}
+                          />
+                          <Text
+                            className="text-base text-white font-medium leading-relaxed flex-1"
+                            style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                            {suggestion}
+                          </Text>
                         </View>
                       ))}
                     </View>
@@ -443,30 +495,56 @@ export default function CameraPage() {
 
                 {/* 当前评分 */}
                 {evaluation && (
-                  <View className="bg-black/70 rounded-xl p-4 mt-3">
+                  <View className="bg-black/40 rounded-xl p-4 mt-3">
                     <View className="flex flex-row items-center justify-between mb-3">
-                      <Text className="text-sm font-semibold text-white">当前评分</Text>
+                      <Text
+                        className="text-sm font-semibold text-white"
+                        style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                        当前评分
+                      </Text>
                       <View className="flex flex-row items-center">
-                        <Text className="text-2xl font-bold text-primary mr-1">{evaluation.total_score}</Text>
-                        <Text className="text-xs text-white">分</Text>
+                        <Text
+                          className="text-2xl font-bold text-primary mr-1"
+                          style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                          {evaluation.total_score}
+                        </Text>
+                        <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                          分
+                        </Text>
                       </View>
                     </View>
                     <View className="space-y-2">
                       <View className="flex flex-row items-center justify-between">
-                        <Text className="text-xs text-white">构图</Text>
-                        <Text className="text-xs text-white">{evaluation.composition_score}/30</Text>
+                        <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                          构图
+                        </Text>
+                        <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                          {evaluation.composition_score}/30
+                        </Text>
                       </View>
                       <View className="flex flex-row items-center justify-between">
-                        <Text className="text-xs text-white">角度</Text>
-                        <Text className="text-xs text-white">{evaluation.angle_score}/20</Text>
+                        <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                          角度
+                        </Text>
+                        <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                          {evaluation.angle_score}/20
+                        </Text>
                       </View>
                       <View className="flex flex-row items-center justify-between">
-                        <Text className="text-xs text-white">距离</Text>
-                        <Text className="text-xs text-white">{evaluation.distance_score}/10</Text>
+                        <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                          距离
+                        </Text>
+                        <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                          {evaluation.distance_score}/10
+                        </Text>
                       </View>
                       <View className="flex flex-row items-center justify-between">
-                        <Text className="text-xs text-white">光线</Text>
-                        <Text className="text-xs text-white">{evaluation.height_score}/10</Text>
+                        <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                          光线
+                        </Text>
+                        <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                          {evaluation.height_score}/10
+                        </Text>
                       </View>
                     </View>
                   </View>
