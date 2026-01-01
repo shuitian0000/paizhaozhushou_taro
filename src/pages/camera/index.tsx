@@ -1,5 +1,5 @@
-import {Button, Camera, Image, ScrollView, Text, View} from '@tarojs/components'
-import Taro, {getEnv, useDidShow} from '@tarojs/taro'
+import {Button, Image, ScrollView, Text, View} from '@tarojs/components'
+import Taro, {useDidShow} from '@tarojs/taro'
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {createEvaluation} from '@/db/api'
 import type {LocalEvaluationResult} from '@/utils/localEvaluation'
@@ -7,377 +7,53 @@ import {evaluatePhotoLocally} from '@/utils/localEvaluation'
 import {uploadFile} from '@/utils/upload'
 
 export default function CameraPage() {
-  const [mode, setMode] = useState<'realtime' | 'capture' | 'fallback'>('realtime')
+  const [mode, setMode] = useState<'idle' | 'evaluating' | 'captured'>('idle')
   const [currentImage, setCurrentImage] = useState<string | null>(null)
-  const [_analyzing, setAnalyzing] = useState(false)
   const [evaluation, setEvaluation] = useState<LocalEvaluationResult | null>(null)
-  const [showResult, setShowResult] = useState(false)
   const [realtimeSuggestions, setRealtimeSuggestions] = useState<string[]>([])
-  const [cameraReady, setCameraReady] = useState(false)
-  const [_initTimeout, setInitTimeout] = useState(false)
-  const analyzeTimerRef = useRef<any>(null)
-  const realtimeTimerRef = useRef<any>(null)
-  const cameraCtxRef = useRef<any>(null)
-  const initTimeoutRef = useRef<any>(null)
-  const isWeApp = getEnv() === 'WEAPP'
+  const [evaluationCount, setEvaluationCount] = useState(0)
+  const evaluationTimerRef = useRef<any>(null)
+  const isEvaluatingRef = useRef(false)
 
-  console.log('📱 Camera页面渲染')
-  console.log('环境:', getEnv())
-  console.log('isWeApp:', isWeApp)
+  console.log('📱 拍照助手页面')
   console.log('mode:', mode)
-  console.log('cameraReady:', cameraReady)
+  console.log('evaluationCount:', evaluationCount)
 
-  // 页面显示时启动超时检测
+  // 页面显示时重置状态
   useDidShow(() => {
-    console.log('📱 页面显示，启动超时检测')
-
-    // 清除旧的超时定时器
-    if (initTimeoutRef.current) {
-      clearTimeout(initTimeoutRef.current)
-    }
-
-    // 5秒后如果Camera还没准备好，显示降级方案
-    initTimeoutRef.current = setTimeout(() => {
-      if (!cameraReady && mode === 'realtime') {
-        console.log('⏰ Camera初始化超时（5秒），切换到降级方案')
-        setInitTimeout(true)
-        Taro.showModal({
-          title: '提示',
-          content: 'Camera组件在开发者工具中可能不支持，建议使用真机调试。是否使用备用拍照方案？',
-          confirmText: '使用备用方案',
-          cancelText: '继续等待',
-          success: (res) => {
-            if (res.confirm) {
-              console.log('用户选择使用备用方案')
-              setMode('fallback')
-            } else {
-              console.log('用户选择继续等待')
-              // 再等待5秒
-              initTimeoutRef.current = setTimeout(() => {
-                if (!cameraReady) {
-                  console.log('⏰ 再次超时，强制切换到降级方案')
-                  setMode('fallback')
-                }
-              }, 5000)
-            }
-          }
-        })
+    console.log('📱 页面显示')
+    // 如果之前在评估中，停止评估
+    if (mode === 'evaluating') {
+      if (evaluationTimerRef.current) {
+        clearInterval(evaluationTimerRef.current)
+        evaluationTimerRef.current = null
       }
-    }, 5000)
+      setMode('idle')
+    }
   })
 
   // 清理定时器
   useEffect(() => {
     return () => {
-      console.log('🧹 组件卸载，清理所有定时器')
-      if (analyzeTimerRef.current) {
-        clearTimeout(analyzeTimerRef.current)
-      }
-      if (realtimeTimerRef.current) {
-        clearInterval(realtimeTimerRef.current)
-      }
-      if (initTimeoutRef.current) {
-        clearTimeout(initTimeoutRef.current)
+      console.log('🧹 组件卸载，清理定时器')
+      if (evaluationTimerRef.current) {
+        clearInterval(evaluationTimerRef.current)
       }
     }
   }, [])
 
-  // Camera组件准备完成
-  const handleCameraReady = useCallback(() => {
-    console.log('=== 🎉 Camera组件onReady回调被触发 ===')
-    console.log('当前环境 getEnv():', getEnv())
-    console.log('isWeApp:', isWeApp)
-
-    // 清除超时定时器
-    if (initTimeoutRef.current) {
-      console.log('✅ 清除超时定时器')
-      clearTimeout(initTimeoutRef.current)
-      initTimeoutRef.current = null
-    }
-
-    if (!isWeApp) {
-      console.error('❌ 非小程序环境，Camera组件不可用')
-      Taro.showToast({title: '请在微信小程序中使用', icon: 'none', duration: 2000})
+  // 执行一次拍照和评估
+  const performEvaluation = useCallback(async () => {
+    if (isEvaluatingRef.current) {
+      console.log('⏭️ 上一次评估还在进行中，跳过')
       return
     }
+
+    isEvaluatingRef.current = true
+    console.log('--- 📸 开始拍照评估 ---')
 
     try {
-      console.log('🔧 开始创建CameraContext...')
-      const ctx = Taro.createCameraContext()
-      console.log('CameraContext创建结果:', ctx)
-      console.log('CameraContext类型:', typeof ctx)
-      console.log('CameraContext是否为null:', ctx === null)
-      console.log('CameraContext是否为undefined:', ctx === undefined)
-
-      if (!ctx) {
-        console.error('❌ CameraContext创建失败，返回null或undefined')
-        Taro.showToast({title: '相机初始化失败', icon: 'none'})
-        return
-      }
-
-      cameraCtxRef.current = ctx
-      console.log('✅ CameraContext已保存到ref')
-      console.log('cameraCtxRef.current:', !!cameraCtxRef.current)
-
-      setCameraReady(true)
-      console.log('✅ cameraReady状态已设置为true')
-
-      Taro.showToast({title: '相机已就绪', icon: 'success', duration: 1500})
-
-      // Camera准备好后，延迟500ms启动实时评估
-      console.log('⏱️ 准备启动实时评估（延迟500ms）')
-      setTimeout(() => {
-        console.log('=== 🚀 延迟后开始启动实时评估 ===')
-
-        if (!cameraCtxRef.current) {
-          console.error('❌ CameraContext丢失')
-          return
-        }
-
-        console.log('✅ CameraContext存在，开始启动实时评估')
-        console.log('设置初始建议')
-        setRealtimeSuggestions(['正在分析镜头...'])
-
-        // 清除旧的定时器
-        if (realtimeTimerRef.current) {
-          console.log('清除旧的定时器')
-          clearInterval(realtimeTimerRef.current)
-        }
-
-        // 每2秒采集一次镜头
-        console.log('⏰ 启动定时器，每2秒采集一次')
-        const timerId = setInterval(() => {
-          if (!cameraCtxRef.current) {
-            console.error('❌ 定时器执行时CameraContext丢失')
-            return
-          }
-
-          console.log('--- 📸 开始采集镜头 ---')
-          cameraCtxRef.current.takePhoto({
-            quality: 'low',
-            success: async (res: any) => {
-              console.log('✅ 镜头采集成功:', res.tempImagePath)
-              try {
-                // 本地评估
-                const result = await evaluatePhotoLocally(res.tempImagePath)
-                console.log('✅ 评估完成 - 总分:', result.total_score)
-
-                // 生成实时建议
-                const suggestions: string[] = []
-
-                if (result.composition_score < 20) {
-                  suggestions.push('构图：需优化主体位置')
-                } else if (result.composition_score < 25) {
-                  suggestions.push('构图：可调整主体')
-                }
-
-                if (result.angle_score < 12) {
-                  suggestions.push('角度：建议换个视角')
-                } else if (result.angle_score < 16) {
-                  suggestions.push('角度：可尝试其他角度')
-                }
-
-                if (result.distance_score < 6) {
-                  suggestions.push('距离：需调整拍摄距离')
-                }
-
-                if (result.height_score < 6) {
-                  suggestions.push('光线：光线不足')
-                } else if (result.height_score < 8) {
-                  suggestions.push('光线：曝光欠佳')
-                }
-
-                if (suggestions.length === 0) {
-                  suggestions.push('画面良好，可以拍摄')
-                }
-
-                console.log('💡 实时建议:', suggestions)
-                setRealtimeSuggestions(suggestions)
-              } catch (error) {
-                console.error('❌ 实时评估失败:', error)
-                setRealtimeSuggestions(['评估失败，继续监控...'])
-              }
-            },
-            fail: (err: any) => {
-              console.error('❌ 镜头采集失败:', err)
-              setRealtimeSuggestions(['采集失败，继续监控...'])
-            }
-          })
-        }, 2000)
-
-        realtimeTimerRef.current = timerId
-        console.log('✅ 实时评估定时器已启动，ID:', timerId)
-      }, 500)
-    } catch (error) {
-      console.error('❌ 创建CameraContext异常:', error)
-      Taro.showToast({title: '相机初始化失败', icon: 'none'})
-    }
-  }, [isWeApp])
-
-  // 停止实时评估
-  const stopRealtimeEvaluation = useCallback(() => {
-    console.log('⏹️ 停止实时评估')
-    if (realtimeTimerRef.current) {
-      clearInterval(realtimeTimerRef.current)
-      realtimeTimerRef.current = null
-    }
-    setRealtimeSuggestions([])
-  }, [])
-
-  // 重新启动实时评估（用于重新拍照后）
-  const restartRealtimeEvaluation = useCallback(() => {
-    console.log('=== 🔄 重新启动实时评估 ===')
-
-    if (!isWeApp) {
-      console.log('非小程序环境，跳过')
-      return
-    }
-
-    if (!cameraCtxRef.current) {
-      console.error('❌ CameraContext不存在')
-      return
-    }
-
-    console.log('✅ 开始重新启动')
-    setRealtimeSuggestions(['正在分析镜头...'])
-
-    // 清除旧的定时器
-    if (realtimeTimerRef.current) {
-      clearInterval(realtimeTimerRef.current)
-    }
-
-    // 每2秒采集一次镜头
-    const timerId = setInterval(() => {
-      if (!cameraCtxRef.current) {
-        console.error('CameraContext丢失')
-        return
-      }
-
-      console.log('采集镜头...')
-      cameraCtxRef.current.takePhoto({
-        quality: 'low',
-        success: async (res: any) => {
-          console.log('镜头采集成功:', res.tempImagePath)
-          try {
-            const result = await evaluatePhotoLocally(res.tempImagePath)
-
-            const suggestions: string[] = []
-            if (result.composition_score < 20) {
-              suggestions.push('构图：需优化主体位置')
-            } else if (result.composition_score < 25) {
-              suggestions.push('构图：可调整主体')
-            }
-            if (result.angle_score < 12) {
-              suggestions.push('角度：建议换个视角')
-            } else if (result.angle_score < 16) {
-              suggestions.push('角度：可尝试其他角度')
-            }
-            if (result.distance_score < 6) {
-              suggestions.push('距离：需调整拍摄距离')
-            }
-            if (result.height_score < 6) {
-              suggestions.push('光线：光线不足')
-            } else if (result.height_score < 8) {
-              suggestions.push('光线：曝光欠佳')
-            }
-            if (suggestions.length === 0) {
-              suggestions.push('画面良好，可以拍摄')
-            }
-
-            setRealtimeSuggestions(suggestions)
-          } catch (error) {
-            console.error('实时评估失败:', error)
-            setRealtimeSuggestions(['评估失败，继续监控...'])
-          }
-        },
-        fail: (err: any) => {
-          console.error('镜头采集失败:', err)
-          setRealtimeSuggestions(['采集失败，继续监控...'])
-        }
-      })
-    }, 2000)
-
-    realtimeTimerRef.current = timerId
-    console.log('✅ 定时器已重新启动，ID:', timerId)
-  }, [isWeApp])
-
-  // 本地分析照片
-  const analyzePhoto = useCallback(async (imagePath: string) => {
-    setAnalyzing(true)
-    Taro.showLoading({title: '分析中...'})
-
-    try {
-      // 使用本地算法评估
-      const result = await evaluatePhotoLocally(imagePath)
-      setEvaluation(result)
-      setShowResult(true)
-      Taro.hideLoading()
-      setAnalyzing(false)
-    } catch (error) {
-      console.error('分析失败:', error)
-      Taro.hideLoading()
-      Taro.showToast({title: '分析失败，请重试', icon: 'none'})
-      setAnalyzing(false)
-    }
-  }, [])
-
-  // 拍摄并保存（从实时模式）
-  const captureFromRealtime = useCallback(async () => {
-    console.log('=== 📸 拍摄按钮点击 ===')
-    console.log('isWeApp:', isWeApp)
-    console.log('cameraCtxRef.current:', !!cameraCtxRef.current)
-    console.log('cameraReady:', cameraReady)
-
-    if (!isWeApp) {
-      Taro.showToast({title: '请在小程序中使用', icon: 'none'})
-      return
-    }
-
-    if (!cameraCtxRef.current) {
-      console.error('❌ CameraContext未创建')
-      Taro.showToast({title: '相机未就绪，请稍候重试', icon: 'none'})
-      return
-    }
-
-    // 停止实时评估
-    stopRealtimeEvaluation()
-
-    Taro.showLoading({title: '拍摄中...'})
-
-    try {
-      cameraCtxRef.current.takePhoto({
-        quality: 'high',
-        success: async (res: any) => {
-          Taro.hideLoading()
-          console.log('✅ 拍摄成功:', res.tempImagePath)
-          setCurrentImage(res.tempImagePath)
-          setMode('capture')
-
-          // 自动开始分析
-          analyzePhoto(res.tempImagePath)
-        },
-        fail: (err: any) => {
-          Taro.hideLoading()
-          console.error('❌ 拍摄失败:', err)
-          Taro.showToast({title: '拍摄失败，请重试', icon: 'none'})
-
-          // 重新启动实时评估
-          setTimeout(() => {
-            restartRealtimeEvaluation()
-          }, 1000)
-        }
-      })
-    } catch (error) {
-      Taro.hideLoading()
-      console.error('❌ 拍摄异常:', error)
-      Taro.showToast({title: '拍摄异常', icon: 'none'})
-    }
-  }, [isWeApp, cameraReady, stopRealtimeEvaluation, analyzePhoto, restartRealtimeEvaluation])
-
-  // 调用相机拍照（降级方案）
-  const takePhotoFallback = useCallback(async () => {
-    console.log('📸 使用降级方案拍照')
-    try {
+      // 调用相机拍照
       const res = await Taro.chooseImage({
         count: 1,
         sizeType: ['compressed'],
@@ -387,39 +63,118 @@ export default function CameraPage() {
       if (res.tempFilePaths && res.tempFilePaths.length > 0) {
         const imagePath = res.tempFilePaths[0]
         console.log('✅ 拍照成功:', imagePath)
-        setCurrentImage(imagePath)
-        setShowResult(false)
-        setMode('capture')
 
-        // 自动开始分析
-        analyzePhoto(imagePath)
+        // 更新当前图片
+        setCurrentImage(imagePath)
+        setEvaluationCount((prev) => prev + 1)
+
+        // 本地评估
+        const result = await evaluatePhotoLocally(imagePath)
+        console.log('✅ 评估完成 - 总分:', result.total_score)
+
+        // 生成实时建议
+        const suggestions: string[] = []
+
+        if (result.composition_score < 20) {
+          suggestions.push('构图：需优化主体位置')
+        } else if (result.composition_score < 25) {
+          suggestions.push('构图：可调整主体')
+        }
+
+        if (result.angle_score < 12) {
+          suggestions.push('角度：建议换个视角')
+        } else if (result.angle_score < 16) {
+          suggestions.push('角度：可尝试其他角度')
+        }
+
+        if (result.distance_score < 6) {
+          suggestions.push('距离：需调整拍摄距离')
+        }
+
+        if (result.height_score < 6) {
+          suggestions.push('光线：光线不足')
+        } else if (result.height_score < 8) {
+          suggestions.push('光线：曝光欠佳')
+        }
+
+        if (suggestions.length === 0) {
+          suggestions.push('画面良好，可以拍摄')
+        }
+
+        console.log('💡 实时建议:', suggestions)
+        setRealtimeSuggestions(suggestions)
+        setEvaluation(result)
       }
     } catch (error: any) {
-      console.error('拍照失败:', error)
-      if (error.errMsg && !error.errMsg.includes('cancel')) {
-        Taro.showToast({title: '拍照失败', icon: 'none'})
-      }
-    }
-  }, [analyzePhoto])
+      console.error('❌ 拍照或评估失败:', error)
 
-  // 重新拍照
-  const retakePhoto = useCallback(() => {
+      // 如果用户取消拍照，停止评估
+      if (error.errMsg?.includes('cancel')) {
+        console.log('用户取消拍照，停止评估')
+        if (evaluationTimerRef.current) {
+          clearInterval(evaluationTimerRef.current)
+          evaluationTimerRef.current = null
+        }
+        setMode('idle')
+        setRealtimeSuggestions([])
+        setEvaluationCount(0)
+      } else {
+        setRealtimeSuggestions(['拍照失败，请重试'])
+      }
+    } finally {
+      isEvaluatingRef.current = false
+    }
+  }, [])
+
+  // 停止实时评估
+  const stopEvaluation = useCallback(() => {
+    console.log('⏹️ 停止实时评估')
+    if (evaluationTimerRef.current) {
+      clearInterval(evaluationTimerRef.current)
+      evaluationTimerRef.current = null
+    }
+    setMode('idle')
+    setRealtimeSuggestions([])
+    setEvaluationCount(0)
+  }, [])
+
+  // 开始实时评估
+  const startEvaluation = useCallback(async () => {
+    console.log('=== 🚀 开始实时评估 ===')
+    setMode('evaluating')
+    setEvaluationCount(0)
+    setRealtimeSuggestions(['准备拍照...'])
+
+    // 立即进行第一次拍照评估
+    await performEvaluation()
+
+    // 启动定时器，每2秒拍照一次
+    evaluationTimerRef.current = setInterval(async () => {
+      if (!isEvaluatingRef.current) {
+        await performEvaluation()
+      }
+    }, 2000)
+  }, [performEvaluation])
+
+  // 确认拍摄（保存当前照片）
+  const confirmCapture = useCallback(() => {
+    console.log('✅ 确认拍摄')
+    if (evaluationTimerRef.current) {
+      clearInterval(evaluationTimerRef.current)
+      evaluationTimerRef.current = null
+    }
+    setMode('captured')
+  }, [])
+
+  // 重新开始
+  const restart = useCallback(() => {
+    console.log('🔄 重新开始')
     setCurrentImage(null)
     setEvaluation(null)
-    setShowResult(false)
-
-    if (isWeApp && mode !== 'fallback') {
-      setMode('realtime')
-      // 延迟重新启动实时评估
-      setTimeout(() => {
-        if (cameraCtxRef.current) {
-          restartRealtimeEvaluation()
-        }
-      }, 500)
-    } else {
-      takePhotoFallback()
-    }
-  }, [isWeApp, mode, restartRealtimeEvaluation, takePhotoFallback])
+    setRealtimeSuggestions([])
+    setEvaluationCount(0)
+    setMode('idle')
+  }, [])
 
   // 保存评估结果
   const saveEvaluation = useCallback(async () => {
@@ -484,7 +239,7 @@ export default function CameraPage() {
     return 'text-orange-500'
   }
 
-  // 生成简略建议（不超过10个字）
+  // 生成简略建议
   const getShortSuggestion = (dimension: string, score: number): string => {
     switch (dimension) {
       case 'composition':
@@ -510,34 +265,120 @@ export default function CameraPage() {
 
   return (
     <View className="min-h-screen bg-gradient-dark">
-      {/* 实时预览模式 */}
-      {mode === 'realtime' && !currentImage && (
-        <View className="relative" style={{height: '100vh'}}>
-          {isWeApp ? (
-            <>
-              {/* Camera组件 */}
-              <Camera
-                className="w-full h-full"
-                devicePosition="back"
-                flash="off"
-                onReady={handleCameraReady}
-                onError={(e) => {
-                  console.error('❌ Camera组件错误:', e)
-                  Taro.showToast({title: 'Camera组件错误', icon: 'none'})
-                }}
-                style={{width: '100%', height: '100%'}}
-              />
+      <ScrollView scrollY style={{height: '100vh', background: 'transparent'}}>
+        <View className="px-6 py-8">
+          {/* 标题 */}
+          <View className="mb-6">
+            <Text className="text-2xl font-bold text-white mb-2">拍照助手</Text>
+            <Text className="text-sm text-muted-foreground">实时评估拍摄画面，获取专业建议</Text>
+          </View>
 
-              {/* 实时建议浮层 */}
-              {cameraReady && realtimeSuggestions.length > 0 && (
-                <View className="absolute top-20 left-4 right-4 bg-black/70 rounded-2xl p-4">
-                  <View className="flex flex-row items-center mb-2">
-                    <View className="i-mdi-eye text-lg text-primary mr-2" />
-                    <Text className="text-sm font-semibold text-white">实时建议</Text>
+          {/* 空闲状态 - 显示说明和开始按钮 */}
+          {mode === 'idle' && (
+            <View>
+              {/* 功能说明 */}
+              <View className="bg-card rounded-2xl p-6 mb-6 shadow-card">
+                <View className="flex flex-row items-center mb-4">
+                  <View className="i-mdi-information text-2xl text-primary mr-3" />
+                  <Text className="text-lg font-semibold text-foreground">功能说明</Text>
+                </View>
+                <View className="space-y-3">
+                  <View className="flex flex-row items-start">
+                    <View className="i-mdi-numeric-1-circle text-xl text-primary mr-3 mt-0.5" />
+                    <View className="flex-1">
+                      <Text className="text-sm text-foreground leading-relaxed">
+                        点击"开始实时评估"后，系统会每2秒自动拍照一次
+                      </Text>
+                    </View>
                   </View>
-                  <View className="space-y-1">
+                  <View className="flex flex-row items-start">
+                    <View className="i-mdi-numeric-2-circle text-xl text-secondary mr-3 mt-0.5" />
+                    <View className="flex-1">
+                      <Text className="text-sm text-foreground leading-relaxed">
+                        每次拍照后会立即显示评估结果和改进建议
+                      </Text>
+                    </View>
+                  </View>
+                  <View className="flex flex-row items-start">
+                    <View className="i-mdi-numeric-3-circle text-xl text-accent mr-3 mt-0.5" />
+                    <View className="flex-1">
+                      <Text className="text-sm text-foreground leading-relaxed">
+                        根据建议调整拍摄角度、距离等，直到满意为止
+                      </Text>
+                    </View>
+                  </View>
+                  <View className="flex flex-row items-start">
+                    <View className="i-mdi-numeric-4-circle text-xl text-primary mr-3 mt-0.5" />
+                    <View className="flex-1">
+                      <Text className="text-sm text-foreground leading-relaxed">
+                        点击"确认拍摄"保存当前照片，或"停止评估"重新开始
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* 开始按钮 */}
+              <Button
+                className="w-full bg-gradient-primary text-white py-5 rounded-2xl break-keep text-lg font-semibold shadow-elegant"
+                size="default"
+                onClick={startEvaluation}>
+                <View className="flex flex-row items-center justify-center">
+                  <View className="i-mdi-camera text-2xl mr-2" />
+                  <Text className="text-lg text-white font-semibold">开始实时评估</Text>
+                </View>
+              </Button>
+
+              {/* 提示信息 */}
+              <View className="mt-6 bg-muted/30 rounded-xl p-4">
+                <View className="flex flex-row items-start">
+                  <View className="i-mdi-lightbulb-on text-lg text-primary mr-2 mt-0.5" />
+                  <View className="flex-1">
+                    <Text className="text-xs text-muted-foreground leading-relaxed">
+                      提示：每次拍照时会调用系统相机，请允许相机权限。评估使用本地算法，无需上传照片到服务器。
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* 评估中状态 - 显示最新照片和建议 */}
+          {mode === 'evaluating' && (
+            <View>
+              {/* 评估计数 */}
+              <View className="bg-primary/20 rounded-xl p-4 mb-4">
+                <View className="flex flex-row items-center justify-between">
+                  <View className="flex flex-row items-center">
+                    <View className="i-mdi-camera-timer text-xl text-primary mr-2" />
+                    <Text className="text-sm text-white">实时评估中...</Text>
+                  </View>
+                  <Text className="text-sm text-white font-semibold">已评估 {evaluationCount} 次</Text>
+                </View>
+              </View>
+
+              {/* 当前照片 */}
+              {currentImage && (
+                <View className="mb-4">
+                  <Image
+                    src={currentImage}
+                    mode="aspectFit"
+                    className="w-full rounded-2xl bg-card"
+                    style={{height: '400px'}}
+                  />
+                </View>
+              )}
+
+              {/* 实时建议 */}
+              {realtimeSuggestions.length > 0 && (
+                <View className="bg-card rounded-2xl p-5 mb-4 shadow-card">
+                  <View className="flex flex-row items-center mb-3">
+                    <View className="i-mdi-lightbulb-on text-xl text-primary mr-2" />
+                    <Text className="text-base font-semibold text-foreground">实时建议</Text>
+                  </View>
+                  <View className="space-y-2">
                     {realtimeSuggestions.map((suggestion, index) => (
-                      <Text key={index} className="text-sm text-white leading-relaxed">
+                      <Text key={index} className="text-sm text-foreground leading-relaxed">
                         • {suggestion}
                       </Text>
                     ))}
@@ -545,109 +386,93 @@ export default function CameraPage() {
                 </View>
               )}
 
-              {/* 相机状态指示 */}
-              {!cameraReady && (
-                <View className="absolute top-4 left-4 right-4 bg-primary/90 rounded-xl p-4">
-                  <Text className="text-sm text-white text-center font-semibold mb-2">相机初始化中...</Text>
-                  <Text className="text-xs text-white text-center mb-2">
-                    环境: {getEnv()} | isWeApp: {isWeApp ? '是' : '否'}
-                  </Text>
-                  <Text className="text-xs text-white/80 text-center leading-relaxed">
-                    如果长时间未就绪，可能是开发者工具不支持Camera组件，请使用真机调试或等待降级方案
-                  </Text>
+              {/* 当前评分 */}
+              {evaluation && (
+                <View className="bg-card rounded-2xl p-5 mb-4 shadow-card">
+                  <View className="flex flex-row items-center justify-between mb-4">
+                    <Text className="text-base font-semibold text-foreground">当前评分</Text>
+                    <View className="flex flex-row items-center">
+                      <Text className={`text-3xl font-bold ${getScoreColor(evaluation.total_score)} mr-1`}>
+                        {evaluation.total_score}
+                      </Text>
+                      <Text className="text-sm text-muted-foreground">分</Text>
+                    </View>
+                  </View>
+
+                  {/* 各项得分 */}
+                  <View className="space-y-3">
+                    <View className="flex flex-row items-center justify-between">
+                      <Text className="text-sm text-foreground">构图</Text>
+                      <View className="flex flex-row items-center">
+                        <Text className="text-xs text-muted-foreground mr-2">
+                          {getShortSuggestion('composition', evaluation.composition_score)}
+                        </Text>
+                        <Text className="text-sm text-foreground font-medium">{evaluation.composition_score}/30</Text>
+                      </View>
+                    </View>
+                    <View className="flex flex-row items-center justify-between">
+                      <Text className="text-sm text-foreground">角度</Text>
+                      <View className="flex flex-row items-center">
+                        <Text className="text-xs text-muted-foreground mr-2">
+                          {getShortSuggestion('angle', evaluation.angle_score)}
+                        </Text>
+                        <Text className="text-sm text-foreground font-medium">{evaluation.angle_score}/20</Text>
+                      </View>
+                    </View>
+                    <View className="flex flex-row items-center justify-between">
+                      <Text className="text-sm text-foreground">距离</Text>
+                      <View className="flex flex-row items-center">
+                        <Text className="text-xs text-muted-foreground mr-2">
+                          {getShortSuggestion('distance', evaluation.distance_score)}
+                        </Text>
+                        <Text className="text-sm text-foreground font-medium">{evaluation.distance_score}/10</Text>
+                      </View>
+                    </View>
+                    <View className="flex flex-row items-center justify-between">
+                      <Text className="text-sm text-foreground">光线</Text>
+                      <View className="flex flex-row items-center">
+                        <Text className="text-xs text-muted-foreground mr-2">
+                          {getShortSuggestion('height', evaluation.height_score)}
+                        </Text>
+                        <Text className="text-sm text-foreground font-medium">{evaluation.height_score}/10</Text>
+                      </View>
+                    </View>
+                  </View>
                 </View>
               )}
 
-              {/* 拍摄按钮 */}
-              <View className="absolute bottom-8 left-0 right-0 flex flex-col items-center">
-                <View
-                  className={`w-20 h-20 rounded-full border-4 flex items-center justify-center mb-4 ${
-                    cameraReady ? 'bg-white border-primary' : 'bg-gray-400 border-gray-500'
-                  }`}
-                  onClick={captureFromRealtime}>
-                  <View className={`w-16 h-16 rounded-full ${cameraReady ? 'bg-primary' : 'bg-gray-500'}`} />
-                </View>
-                <Text className="text-sm text-white">{cameraReady ? '点击拍摄并保存' : '等待相机就绪...'}</Text>
+              {/* 操作按钮 */}
+              <View className="space-y-3">
+                <Button
+                  className="w-full bg-primary text-white py-4 rounded-xl break-keep text-base"
+                  size="default"
+                  onClick={confirmCapture}>
+                  确认拍摄
+                </Button>
+                <Button
+                  className="w-full bg-card text-foreground py-4 rounded-xl border border-border break-keep text-base"
+                  size="default"
+                  onClick={stopEvaluation}>
+                  停止评估
+                </Button>
               </View>
-            </>
-          ) : (
-            // H5环境提示
-            <View className="flex flex-col items-center justify-center h-full px-6">
-              <View className="i-mdi-camera-off text-6xl text-muted-foreground mb-4" />
-              <Text className="text-lg text-white mb-2">实时预览功能仅在小程序中可用</Text>
-              <Text className="text-sm text-muted-foreground mb-2 text-center">当前环境: {getEnv()}</Text>
-              <Text className="text-sm text-muted-foreground mb-6 text-center">
-                H5环境不支持Camera组件，请使用拍照功能
-              </Text>
-              <Button
-                className="bg-primary text-white py-3 px-8 rounded-xl break-keep text-base"
-                size="default"
-                onClick={takePhotoFallback}>
-                调用相机拍照
-              </Button>
             </View>
           )}
-        </View>
-      )}
 
-      {/* 降级方案模式 */}
-      {mode === 'fallback' && !currentImage && (
-        <View className="flex flex-col items-center justify-center min-h-screen px-6">
-          <View className="i-mdi-camera text-6xl text-primary mb-4" />
-          <Text className="text-xl text-white mb-2 font-semibold">备用拍照方案</Text>
-          <Text className="text-sm text-muted-foreground mb-6 text-center leading-relaxed">
-            Camera组件在当前环境不可用，使用系统相机拍照功能。拍照后将自动进行评估。
-          </Text>
-          <Button
-            className="bg-primary text-white py-4 px-8 rounded-xl break-keep text-base mb-4"
-            size="default"
-            onClick={takePhotoFallback}>
-            调用相机拍照
-          </Button>
-          <Button
-            className="bg-card text-foreground py-3 px-6 rounded-xl border border-border break-keep text-sm"
-            size="default"
-            onClick={() => {
-              setMode('realtime')
-              setInitTimeout(false)
-            }}>
-            返回实时预览
-          </Button>
-          <View className="mt-8 bg-muted/30 rounded-xl p-4">
-            <View className="flex flex-row items-start">
-              <View className="i-mdi-information text-lg text-primary mr-2 mt-0.5" />
-              <View className="flex-1">
-                <Text className="text-xs text-muted-foreground leading-relaxed">
-                  提示：Camera组件需要真机调试才能完整体验实时预览功能。在微信开发者工具中可能无法正常工作。
-                </Text>
+          {/* 已拍摄状态 - 显示最终结果 */}
+          {mode === 'captured' && currentImage && evaluation && (
+            <View>
+              {/* 图片预览 */}
+              <View className="mb-6">
+                <Image
+                  src={currentImage}
+                  mode="aspectFit"
+                  className="w-full rounded-2xl bg-card"
+                  style={{height: '400px'}}
+                />
               </View>
-            </View>
-          </View>
-        </View>
-      )}
 
-      {/* 拍照结果模式 */}
-      {mode === 'capture' && currentImage && (
-        <ScrollView scrollY style={{height: '100vh', background: 'transparent'}}>
-          <View className="px-6 py-8">
-            {/* 标题 */}
-            <View className="mb-6">
-              <Text className="text-2xl font-bold text-white mb-2">拍照助手</Text>
-              <Text className="text-sm text-muted-foreground">拍摄照片，获取实时评分和建议</Text>
-            </View>
-
-            {/* 图片预览区域 */}
-            <View className="mb-6">
-              <Image
-                src={currentImage}
-                mode="aspectFit"
-                className="w-full rounded-2xl bg-card"
-                style={{height: '400px'}}
-              />
-            </View>
-
-            {/* 评估结果 */}
-            {showResult && evaluation && (
+              {/* 评估结果 */}
               <View className="bg-card rounded-2xl p-6 mb-6 shadow-card">
                 {/* 总分 */}
                 <View className="flex flex-col items-center mb-6 pb-6 border-b border-border">
@@ -660,7 +485,7 @@ export default function CameraPage() {
                   </View>
                 </View>
 
-                {/* 各项得分（带简略建议） */}
+                {/* 各项得分（带进度条） */}
                 <View className="space-y-4 mb-6">
                   {/* 构图 */}
                   <View>
@@ -728,7 +553,7 @@ export default function CameraPage() {
                   {/* 高度 */}
                   <View>
                     <View className="flex flex-row items-center justify-between mb-2">
-                      <Text className="text-sm text-foreground">高度</Text>
+                      <Text className="text-sm text-foreground">光线</Text>
                       <View className="flex flex-row items-center">
                         <Text className="text-xs text-muted-foreground mr-2">
                           {getShortSuggestion('height', evaluation.height_score)}
@@ -779,49 +604,35 @@ export default function CameraPage() {
                   </View>
                 )}
               </View>
-            )}
 
-            {/* 操作按钮 */}
-            <View className="space-y-3">
-              <Button
-                className="w-full bg-primary text-white py-4 rounded-xl break-keep text-base"
-                size="default"
-                onClick={retakePhoto}>
-                重新拍照
-              </Button>
-              {showResult && (
+              {/* 操作按钮 */}
+              <View className="space-y-3">
                 <Button
                   className="w-full bg-secondary text-white py-4 rounded-xl break-keep text-base"
                   size="default"
                   onClick={saveEvaluation}>
                   保存评估结果
                 </Button>
-              )}
-              <Button
-                className="w-full bg-card text-foreground py-4 rounded-xl border border-border break-keep text-base"
-                size="default"
-                onClick={() => Taro.navigateBack()}>
-                返回
-              </Button>
-            </View>
-
-            {/* 提示信息 */}
-            <View className="mt-6 bg-muted/30 rounded-xl p-4">
-              <View className="flex flex-row items-start">
-                <View className="i-mdi-information text-lg text-primary mr-2 mt-0.5" />
-                <View className="flex-1">
-                  <Text className="text-xs text-muted-foreground leading-relaxed">
-                    本功能使用小程序本地算法进行实时评估，无需上传照片到服务器。评估基于构图规则、亮度对比度等指标，为您提供即时的摄影建议。
-                  </Text>
-                </View>
+                <Button
+                  className="w-full bg-card text-foreground py-4 rounded-xl border border-border break-keep text-base"
+                  size="default"
+                  onClick={restart}>
+                  重新拍摄
+                </Button>
+                <Button
+                  className="w-full bg-card text-foreground py-4 rounded-xl border border-border break-keep text-base"
+                  size="default"
+                  onClick={() => Taro.navigateBack()}>
+                  返回
+                </Button>
               </View>
             </View>
+          )}
 
-            {/* 底部间距 */}
-            <View className="h-20" />
-          </View>
-        </ScrollView>
-      )}
+          {/* 底部间距 */}
+          <View className="h-20" />
+        </View>
+      </ScrollView>
     </View>
   )
 }
