@@ -13,6 +13,7 @@ export default function CameraPage() {
   const [realtimeSuggestions, setRealtimeSuggestions] = useState<string[]>([])
   const [evaluationCount, setEvaluationCount] = useState(0)
   const [isEvaluating, setIsEvaluating] = useState(false)
+  const [cameraPosition, setCameraPosition] = useState<'back' | 'front'>('back') // 摄像头方向
   const cameraCtxRef = useRef<any>(null)
   const evaluationTimerRef = useRef<any>(null)
   const isProcessingRef = useRef(false)
@@ -22,6 +23,7 @@ export default function CameraPage() {
   console.log('mode:', mode)
   console.log('isEvaluating:', isEvaluating)
   console.log('evaluationCount:', evaluationCount)
+  console.log('cameraPosition:', cameraPosition)
 
   // 页面显示时初始化相机
   useDidShow(() => {
@@ -411,6 +413,16 @@ export default function CameraPage() {
     }
   }, [currentImage, evaluation])
 
+  // 切换前后摄像头
+  const toggleCamera = useCallback(() => {
+    setCameraPosition((prev) => (prev === 'back' ? 'front' : 'back'))
+    Taro.showToast({
+      title: cameraPosition === 'back' ? '切换到前置摄像头' : '切换到后置摄像头',
+      icon: 'none',
+      duration: 1000
+    })
+  }, [cameraPosition])
+
   // 获取评分颜色
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-green-500'
@@ -448,10 +460,25 @@ export default function CameraPage() {
       {mode === 'preview' && (
         <View className="relative" style={{height: '100vh'}}>
           {/* Camera组件 */}
-          <Camera className="w-full h-full" devicePosition="back" flash="off" style={{width: '100%', height: '100%'}} />
+          <Camera
+            className="w-full h-full"
+            devicePosition={cameraPosition}
+            flash="off"
+            style={{width: '100%', height: '100%'}}
+          />
 
           {/* 顶部信息栏 */}
           <View className="absolute top-4 left-4 right-4">
+            {/* 切换摄像头按钮 */}
+            <View className="absolute top-0 right-0 z-10">
+              <View
+                className="bg-black/70 rounded-full p-3"
+                onClick={toggleCamera}
+                style={{width: '48px', height: '48px'}}>
+                <View className="i-mdi-camera-flip text-2xl text-white" />
+              </View>
+            </View>
+
             {!isEvaluating && (
               <View className="bg-black/70 rounded-xl p-4">
                 <Text className="text-sm text-white text-center leading-relaxed">

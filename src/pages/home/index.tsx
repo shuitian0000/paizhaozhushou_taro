@@ -2,7 +2,7 @@ import {ScrollView, Text, View} from '@tarojs/components'
 import Taro, {useDidShow} from '@tarojs/taro'
 import {useCallback, useState} from 'react'
 import type {Profile} from '@/db/types'
-import {getCurrentUser, navigateToLogin} from '@/utils/auth'
+import {getCurrentUser, getCurrentUserId, navigateToLogin} from '@/utils/auth'
 
 export default function Home() {
   const [user, setUser] = useState<Profile | null>(null)
@@ -150,6 +150,37 @@ export default function Home() {
                 <View>
                   <Text className="text-lg font-semibold text-foreground mb-1">历史记录</Text>
                   <Text className="text-sm text-muted-foreground">查看所有评估记录</Text>
+                </View>
+              </View>
+              <View className="i-mdi-chevron-right text-2xl text-muted-foreground" />
+            </View>
+          </View>
+
+          {/* 建议和吐槽 */}
+          <View
+            className="bg-card rounded-2xl p-5 shadow-card border border-border"
+            onClick={async () => {
+              const userId = await getCurrentUserId()
+              if (!userId) {
+                Taro.showModal({
+                  title: '提示',
+                  content: '需要登录后才能提交反馈，是否前往登录？',
+                  success: (res) => {
+                    if (res.confirm) {
+                      navigateToLogin('/pages/home/index')
+                    }
+                  }
+                })
+                return
+              }
+              Taro.navigateTo({url: '/pages/feedback/index'})
+            }}>
+            <View className="flex flex-row items-center justify-between">
+              <View className="flex flex-row items-center">
+                <View className="i-mdi-message-text text-2xl text-secondary mr-3" />
+                <View>
+                  <Text className="text-lg font-semibold text-foreground mb-1">建议和吐槽</Text>
+                  <Text className="text-sm text-muted-foreground">帮助我们改进产品</Text>
                 </View>
               </View>
               <View className="i-mdi-chevron-right text-2xl text-muted-foreground" />

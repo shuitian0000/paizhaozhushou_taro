@@ -109,3 +109,37 @@ export async function getEvaluationStats(): Promise<{
     return null
   }
 }
+
+/**
+ * 创建用户反馈
+ */
+export async function createFeedback(
+  input: import('./types').CreateFeedbackInput
+): Promise<import('./types').UserFeedback | null> {
+  const {data, error} = await supabase.from('user_feedback').insert(input).select().maybeSingle()
+
+  if (error) {
+    console.error('创建反馈失败:', error)
+    return null
+  }
+
+  return data
+}
+
+/**
+ * 获取用户的反馈列表
+ */
+export async function getUserFeedbacks(limit = 50): Promise<import('./types').UserFeedback[]> {
+  const {data, error} = await supabase
+    .from('user_feedback')
+    .select('*')
+    .order('created_at', {ascending: false})
+    .limit(limit)
+
+  if (error) {
+    console.error('获取反馈列表失败:', error)
+    return []
+  }
+
+  return data || []
+}

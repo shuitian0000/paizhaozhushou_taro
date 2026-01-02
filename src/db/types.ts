@@ -3,6 +3,7 @@
 export type EvaluationType = 'realtime' | 'upload'
 export type SceneType = 'portrait' | 'landscape' | 'group' | 'other'
 export type UserRole = 'user' | 'admin'
+export type FeedbackStatus = 'pending' | 'reviewed' | 'resolved'
 
 export interface Profile {
   id: string
@@ -10,6 +11,22 @@ export interface Profile {
   openid: string | null
   role: UserRole
   created_at: string
+}
+
+export interface UserFeedback {
+  id: string
+  user_id: string
+  content: string
+  images: string[] | null
+  status: FeedbackStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateFeedbackInput {
+  content: string
+  images?: string[]
+  user_id: string
 }
 
 export interface PhotoEvaluation {
