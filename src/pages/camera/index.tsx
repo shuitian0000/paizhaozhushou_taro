@@ -470,16 +470,6 @@ export default function CameraPage() {
 
           {/* 顶部信息栏 */}
           <View className="absolute top-4 left-4 right-4">
-            {/* 切换摄像头按钮 - 调整位置避免与状态栏重叠 */}
-            <View className="absolute top-12 right-0 z-10">
-              <View
-                className="bg-black/70 rounded-full p-3"
-                onClick={toggleCamera}
-                style={{width: '48px', height: '48px'}}>
-                <View className="i-mdi-camera-flip text-2xl text-white" />
-              </View>
-            </View>
-
             {!isEvaluating && (
               <View className="bg-black/70 rounded-xl p-4">
                 <Text className="text-sm text-white text-center leading-relaxed">
@@ -606,6 +596,16 @@ export default function CameraPage() {
 
           {/* 底部操作按钮 */}
           <View className="absolute bottom-8 left-0 right-0 px-6">
+            {/* 摄像头切换按钮 - 放在底部右侧，避免与顶部系统按钮重叠 */}
+            <View className="absolute -top-16 right-6">
+              <View
+                className="bg-black/70 rounded-full p-3"
+                onClick={toggleCamera}
+                style={{width: '48px', height: '48px'}}>
+                <View className="i-mdi-camera-flip text-2xl text-white" />
+              </View>
+            </View>
+
             {!isEvaluating ? (
               <View className="space-y-3">
                 <Button

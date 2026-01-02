@@ -215,6 +215,69 @@ function analyzeRuleOfThirds(imageData: ImageData): number {
 }
 
 /**
+ * 分析主体大小占比（用于距离评估）
+ */
+function analyzeSubjectSize(imageData: ImageData): {
+  subjectRatio: number // 主体占画面的比例
+  centerDensity: number // 中心密度
+} {
+  const {width, height, data} = imageData
+  const centerX = Math.floor(width / 2)
+  const centerY = Math.floor(height / 2)
+
+  // 计算中心区域大小（1/3画面）
+  const centerWidth = Math.floor(width / 3)
+  const centerHeight = Math.floor(height / 3)
+
+  let centerHighContrastPixels = 0
+  let totalCenterPixels = 0
+  let totalHighContrastPixels = 0
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = (y * width + x) * 4
+      const r = data[idx]
+      const g = data[idx + 1]
+      const b = data[idx + 2]
+
+      // 计算对比度（边缘强度）
+      let contrast = 0
+      if (x > 0 && x < width - 1 && y > 0 && y < height - 1) {
+        const idx_left = (y * width + (x - 1)) * 4
+        const idx_right = (y * width + (x + 1)) * 4
+        const r_diff = Math.abs(r - data[idx_left]) + Math.abs(r - data[idx_right])
+        const g_diff = Math.abs(g - data[idx_left + 1]) + Math.abs(g - data[idx_right + 1])
+        const b_diff = Math.abs(b - data[idx_left + 2]) + Math.abs(b - data[idx_right + 2])
+        contrast = (r_diff + g_diff + b_diff) / 3
+      }
+
+      const isHighContrast = contrast > 30
+      if (isHighContrast) {
+        totalHighContrastPixels++
+      }
+
+      // 检查是否在中心区域
+      const inCenterX = Math.abs(x - centerX) < centerWidth / 2
+      const inCenterY = Math.abs(y - centerY) < centerHeight / 2
+      if (inCenterX && inCenterY) {
+        totalCenterPixels++
+        if (isHighContrast) {
+          centerHighContrastPixels++
+        }
+      }
+    }
+  }
+
+  const centerDensity = totalCenterPixels > 0 ? centerHighContrastPixels / totalCenterPixels : 0
+  const subjectRatio = totalHighContrastPixels / (width * height)
+
+  return {
+    subjectRatio: Math.min(subjectRatio * 10, 1), // 归一化
+    centerDensity: Math.min(centerDensity * 2, 1)
+  }
+}
+
+/**
  * 检测图片中心区域的内容密度
  */
 function analyzeCenterFocus(imageData: ImageData): number {
@@ -319,6 +382,9 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
           // 6. 中心焦点分析
           const centerFocus = analyzeCenterFocus(imageData)
 
+          // 7. 主体大小分析（用于距离评估）
+          const subjectSize = analyzeSubjectSize(imageData)
+
           console.log('图片分析完成:', {
             brightness: brightnessInfo.mean,
             contrast,
@@ -326,7 +392,9 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
             edgeStrength: edgeInfo.edgeStrength,
             detailRichness: edgeInfo.detailRichness,
             ruleOfThirds,
-            centerFocus
+            centerFocus,
+            subjectRatio: subjectSize.subjectRatio,
+            centerDensity: subjectSize.centerDensity
           })
 
           // === 计算各维度得分（借鉴专业评估模型）===
@@ -351,10 +419,26 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
             angleScore = Math.min(angleScore + 2, 20)
           }
 
-          // 3. 距离得分 (10分)
-          // 专业距离考虑：主体清晰度、景深效果
-          const distanceBase = centerFocus * 0.7 + edgeInfo.detailRichness * 0.3
-          const distanceScore = Math.round(distanceBase * 10)
+          // 3. 距离得分 (10分) - 优化版
+          // 使用主体占比和中心密度来评估距离
+          // 理想状态：主体占画面40-60%，中心密度适中
+          let distanceScore = 0
+          if (subjectSize.subjectRatio >= 0.4 && subjectSize.subjectRatio <= 0.6) {
+            // 主体大小理想
+            distanceScore = 10
+          } else if (subjectSize.subjectRatio >= 0.3 && subjectSize.subjectRatio <= 0.7) {
+            // 主体大小可接受
+            distanceScore = 8
+          } else if (subjectSize.subjectRatio >= 0.2 && subjectSize.subjectRatio <= 0.8) {
+            // 主体大小需要调整
+            distanceScore = 6
+          } else if (subjectSize.subjectRatio < 0.2) {
+            // 主体太小，距离太远
+            distanceScore = 4
+          } else {
+            // 主体太大，距离太近
+            distanceScore = 5
+          }
 
           // 4. 光线得分 (10分)
           // 专业光线考虑：曝光准确性、明暗分布、色彩饱和度
@@ -457,25 +541,34 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
             suggestions.angle = '拍摄角度出色，很好地展现了主体特点和空间感'
           }
 
-          // 距离建议 - 明确拉近/拉远的具体距离
+          // 距离建议 - 基于主体占比的精确判断
           if (distanceScore < 5) {
-            if (centerFocus < 0.4) {
-              suggestions.distance = '距离过远，主体不清晰，建议靠近3-5步，让主体占据画面60-70%'
-            } else {
+            if (subjectSize.subjectRatio < 0.2) {
+              // 主体太小，距离太远
+              suggestions.distance = '距离过远，主体太小，建议靠近3-5步，让主体占据画面40-60%'
+            } else if (subjectSize.subjectRatio > 0.8) {
+              // 主体太大，距离太近
               suggestions.distance = '距离过近，画面局促，建议后退2-3步，留出适当呼吸空间'
+            } else {
+              suggestions.distance = '主体位置不佳，建议调整拍摄距离使主体更突出'
             }
           } else if (distanceScore < 7) {
-            if (centerFocus > 0.7) {
+            if (subjectSize.subjectRatio < 0.3) {
+              // 稍远
+              suggestions.distance = '距离稍远，建议靠近1-2步，突出人物面部表情和细节'
+            } else if (subjectSize.subjectRatio > 0.7) {
+              // 稍近
               suggestions.distance = '距离稍近，建议后退1步，拍摄全身或七分身，展现完整身材比例'
             } else {
-              suggestions.distance = '距离稍远，建议靠近1-2步，突出人物面部表情和细节'
+              suggestions.distance = '距离基本合适，可微调以获得更好的景深效果'
             }
           } else if (distanceScore < 9) {
             suggestions.distance = '距离恰当，主体突出且背景协调，保持当前距离'
           }
 
-          // 机位高度建议 - 明确高一点/低一点，并说明对人物表现的影响
-          if (heightScore < 5) {
+          // 机位高度建议 - 优化版，更容易触发建议
+          if (heightScore < 6) {
+            // 得分较低，光线有明显问题
             if (brightnessInfo.mean < 0.3) {
               suggestions.height = '光线不足，建议提高机位10-20cm，利用自然光从上方照亮面部，提升肤色'
             } else if (brightnessInfo.mean > 0.7) {
@@ -484,22 +577,30 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
               suggestions.height = '暗部过多，建议升高机位20-30cm，从斜上方拍摄，增加面部受光面积'
             } else if (brightnessInfo.brightRatio > 0.5) {
               suggestions.height = '高光过曝，建议降低机位至胸部高度，避免强光直射，保留细节'
+            } else {
+              suggestions.height = '光线欠佳，建议调整机位高度：升高10-15cm或降低10-15cm改善光线'
             }
-          } else if (heightScore < 8) {
+          } else if (heightScore < 9) {
+            // 得分中等，可以优化
             if (saturation < 0.3) {
               suggestions.height = '色彩平淡，建议升高机位至眼睛上方10cm，俯拍显脸小、眼睛大'
             } else if (saturation > 0.7) {
               suggestions.height = '色彩过饱和，建议降低机位至腰部高度，仰拍拉长身材、显腿长'
             } else {
-              // 根据场景给出机位建议
-              if (centerFocus > 0.6) {
-                suggestions.height = '机位合适，可微调：升高5-10cm显气质，降低5-10cm显身高'
+              // 根据场景和主体大小给出机位建议
+              if (subjectSize.subjectRatio > 0.5) {
+                // 主体较大，可能是近距离人像
+                suggestions.height = '机位可优化：升高5-10cm俯拍显脸小，或降低5-10cm仰拍显腿长'
               } else {
-                suggestions.height = '曝光基本准确，保持当前机位高度'
+                // 主体较小，可能是全身或风景
+                suggestions.height = '机位基本合适，可微调：升高10cm增加视野，降低10cm增加气势'
               }
             }
           } else if (heightScore < 10) {
-            suggestions.height = '光线运用良好，机位高度合适，保持当前设置'
+            // 得分较高，但仍有优化空间
+            if (subjectSize.subjectRatio > 0.6) {
+              suggestions.height = '光线良好，可微调机位：升高5cm显气质，降低5cm显亲和'
+            }
           }
 
           // 人物姿态建议（针对人像场景）
