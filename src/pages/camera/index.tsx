@@ -101,33 +101,34 @@ export default function CameraPage() {
             const result = await evaluatePhotoLocally(res.tempImagePath)
             console.log('✅ 评估完成 - 总分:', result.total_score)
 
-            // 生成实时建议
+            // 使用详细建议（从evaluation.suggestions中提取）
             const suggestions: string[] = []
 
-            if (result.composition_score < 20) {
-              suggestions.push('构图：需优化主体位置')
-            } else if (result.composition_score < 25) {
-              suggestions.push('构图：可调整主体')
+            // 优先显示得分最低的维度的具体建议
+            const scores = [
+              {name: '构图', score: result.composition_score, suggestion: result.suggestions.composition},
+              {name: '角度', score: result.angle_score, suggestion: result.suggestions.angle},
+              {name: '距离', score: result.distance_score, suggestion: result.suggestions.distance},
+              {name: '机位', score: result.height_score, suggestion: result.suggestions.height},
+              {name: '姿态', score: result.pose_score || 20, suggestion: result.suggestions.pose}
+            ]
+
+            // 按得分排序，优先显示得分低的维度
+            scores.sort((a, b) => a.score - b.score)
+
+            // 显示前3个需要改进的维度的具体建议
+            let addedCount = 0
+            for (const item of scores) {
+              if (item.suggestion && addedCount < 3) {
+                // 添加维度标签和具体建议
+                suggestions.push(`${item.name}：${item.suggestion}`)
+                addedCount++
+              }
             }
 
-            if (result.angle_score < 12) {
-              suggestions.push('角度：建议换个视角')
-            } else if (result.angle_score < 16) {
-              suggestions.push('角度：可尝试其他角度')
-            }
-
-            if (result.distance_score < 6) {
-              suggestions.push('距离：需调整拍摄距离')
-            }
-
-            if (result.height_score < 6) {
-              suggestions.push('光线：光线不足')
-            } else if (result.height_score < 8) {
-              suggestions.push('光线：曝光欠佳')
-            }
-
+            // 如果所有维度都很好，显示鼓励信息
             if (suggestions.length === 0) {
-              suggestions.push('画面良好，可以拍摄')
+              suggestions.push('画面优秀，可以拍摄！')
             }
 
             console.log('💡 实时建议:', suggestions)
@@ -469,8 +470,8 @@ export default function CameraPage() {
 
           {/* 顶部信息栏 */}
           <View className="absolute top-4 left-4 right-4">
-            {/* 切换摄像头按钮 */}
-            <View className="absolute top-0 right-0 z-10">
+            {/* 切换摄像头按钮 - 调整位置避免与状态栏重叠 */}
+            <View className="absolute top-12 right-0 z-10">
               <View
                 className="bg-black/70 rounded-full p-3"
                 onClick={toggleCamera}
