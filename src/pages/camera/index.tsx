@@ -468,6 +468,49 @@ export default function CameraPage() {
             style={{width: '100%', height: '100%'}}
           />
 
+          {/* 构图辅助线 - 三分法网格（仅在实时评估时显示）*/}
+          {isEvaluating && (
+            <View className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none">
+              {/* 横向辅助线 - 上 */}
+              <View
+                className="absolute left-0 right-0 border-t-2 border-dashed border-white/40"
+                style={{top: '33.33%'}}
+              />
+              {/* 横向辅助线 - 下 */}
+              <View
+                className="absolute left-0 right-0 border-t-2 border-dashed border-white/40"
+                style={{top: '66.67%'}}
+              />
+              {/* 纵向辅助线 - 左 */}
+              <View
+                className="absolute top-0 bottom-0 border-l-2 border-dashed border-white/40"
+                style={{left: '33.33%'}}
+              />
+              {/* 纵向辅助线 - 右 */}
+              <View
+                className="absolute top-0 bottom-0 border-l-2 border-dashed border-white/40"
+                style={{left: '66.67%'}}
+              />
+              {/* 四个交点标记 - 标识最佳构图位置 */}
+              <View
+                className="absolute w-3 h-3 rounded-full bg-white/60"
+                style={{left: 'calc(33.33% - 6px)', top: 'calc(33.33% - 6px)'}}
+              />
+              <View
+                className="absolute w-3 h-3 rounded-full bg-white/60"
+                style={{left: 'calc(66.67% - 6px)', top: 'calc(33.33% - 6px)'}}
+              />
+              <View
+                className="absolute w-3 h-3 rounded-full bg-white/60"
+                style={{left: 'calc(33.33% - 6px)', top: 'calc(66.67% - 6px)'}}
+              />
+              <View
+                className="absolute w-3 h-3 rounded-full bg-white/60"
+                style={{left: 'calc(66.67% - 6px)', top: 'calc(66.67% - 6px)'}}
+              />
+            </View>
+          )}
+
           {/* 顶部信息栏 */}
           <View className="absolute top-4 left-4 right-4">
             {!isEvaluating && (
@@ -597,12 +640,18 @@ export default function CameraPage() {
           {/* 底部操作按钮 */}
           <View className="absolute bottom-8 left-0 right-0 px-6">
             {/* 摄像头切换按钮 - 放在底部右侧，避免与顶部系统按钮重叠 */}
-            <View className="absolute -top-16 right-6">
+            <View className="absolute -top-20 right-6">
               <View
-                className="bg-black/70 rounded-full p-3"
+                className="bg-black/70 rounded-full p-4 border-2 border-white/30"
                 onClick={toggleCamera}
-                style={{width: '48px', height: '48px'}}>
-                <View className="i-mdi-camera-flip text-2xl text-white" />
+                style={{
+                  width: '60px',
+                  height: '60px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                <View className="i-mdi-camera-flip text-3xl text-white" />
               </View>
             </View>
 
