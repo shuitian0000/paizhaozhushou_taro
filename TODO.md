@@ -70,6 +70,7 @@
   - [x] Bug修复：优化机位建议触发条件，确保正常显示
   - [x] 功能增强：添加构图辅助线（三分法网格）
   - [x] 功能增强：优化摄像头切换按钮尺寸和样式
+  - [x] 合规性：完善用户隐私保护指引
 
 ## 完成情况
 ✅ 所有功能已实现完成
@@ -183,6 +184,15 @@
     * 辅助线为白色半透明虚线，不影响观看镜头画面
     * 仅在实时评估时显示，停止评估时自动隐藏
     * 帮助用户将主体放置在最佳构图位置（三分法交点）
+  - 用户隐私保护指引：
+    * 在app.config.ts中配置__usePrivacyCheck__和requiredPrivateInfos
+    * 在project.config.json中启用隐私检查
+    * 创建PrivacyModal组件，展示隐私保护指引弹窗
+    * 监听onNeedPrivacyAuthorization事件，在用户使用隐私接口前弹出授权
+    * 声明使用的隐私接口：chooseImage、chooseMedia、saveImageToPhotosAlbum、camera
+    * 详细说明各权限用途和隐私保护措施
+    * 创建PRIVACY_POLICY.md隐私政策文档
+    * 符合微信小程序审核要求
 
 ## 功能说明
 

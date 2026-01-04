@@ -19,6 +19,9 @@ export default defineAppConfig({
       desc: '需要保存照片到您的相册'
     }
   },
+  // 隐私保护配置
+  __usePrivacyCheck__: true,
+  requiredPrivateInfos: ['chooseImage', 'chooseMedia', 'saveImageToPhotosAlbum', 'camera'] as any,
   tabBar: {
     color: '#8B9AAD',
     selectedColor: '#1E5EFF',
