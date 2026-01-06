@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const {code} = await req.json().catch(() => ({}))
+    const {code, nickname, avatar_url} = await req.json().catch(() => ({}))
     if (!code) {
       return new Response(JSON.stringify({message: '缺少code'}), {
         status: 400,
@@ -50,11 +50,17 @@ Deno.serve(async (req) => {
     const {openid} = wxData
     const email = `${openid}@wechat.login`
 
+    // 生成magic link，并传递用户信息
     const {data: magicLinkData, error: magicLinkError} = await supabaseAdmin.auth.admin.generateLink({
       type: 'magiclink',
       email,
       options: {
-        data: {from: 'wechat', openid}
+        data: {
+          from: 'wechat',
+          openid,
+          nickname: nickname || '微信用户',
+          avatar_url: avatar_url || null
+        }
       }
     })
 

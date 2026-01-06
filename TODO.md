@@ -71,6 +71,17 @@
   - [x] 功能增强：添加构图辅助线（三分法网格）
   - [x] 功能增强：优化摄像头切换按钮尺寸和样式
   - [x] 合规性：完善用户隐私保护指引
+- [x] 步骤24：优化登录系统和数据库结构（第十八轮）
+  - [x] 修改登录逻辑，只支持微信登录
+  - [x] 获取微信用户信息（昵称、头像）
+  - [x] 优化数据库表结构
+    - [x] 删除profiles表不需要的字段（username、phone、email、password_hash）
+    - [x] 添加profiles表新字段（nickname、avatar_url）
+    - [x] 修改openid为UNIQUE约束
+  - [x] 更新TypeScript类型定义
+  - [x] 重写登录页面UI
+  - [x] 更新Edge Function处理用户信息
+  - [x] 修改首页显示用户头像和昵称
 
 ## 完成情况
 ✅ 所有功能已实现完成
@@ -193,6 +204,40 @@
     * 详细说明各权限用途和隐私保护措施
     * 创建PRIVACY_POLICY.md隐私政策文档
     * 符合微信小程序审核要求
+
+✅ 优化登录系统和数据库结构（第十八轮）：
+  - 登录系统优化：
+    * 删除用户名密码登录功能，只保留微信登录
+    * 使用Taro.getUserProfile获取用户信息（昵称、头像）
+    * 登录时提示"用于完善用户资料"
+    * 用户必须授权获取信息才能登录
+    * 登录成功后自动跳转到来源页面或首页
+  - 数据库结构优化：
+    * 创建迁移optimize_profiles_for_wechat_only
+    * 删除profiles表字段：username、phone、email、password_hash
+    * 添加profiles表字段：nickname（微信昵称）、avatar_url（微信头像URL）
+    * 修改openid字段为UNIQUE约束（每个微信用户只能有一个账号）
+    * 更新触发器handle_new_user()，从raw_user_meta_data提取nickname和avatar_url
+    * 支持ON CONFLICT更新，允许用户信息更新
+  - TypeScript类型更新：
+    * 修改Profile接口，删除username字段，添加nickname和avatar_url字段
+    * openid从可选改为必填
+  - 登录页面重写：
+    * 删除用户名密码登录表单
+    * 只保留微信登录按钮
+    * 添加功能说明（快速登录、安全可靠、数据同步）
+    * 添加用户协议勾选框
+    * 添加提示信息（登录后的功能、未登录也可使用）
+    * 优化UI设计，使用卡片布局和图标说明
+  - Edge Function更新：
+    * 修改wechat-miniprogram-login函数，接收nickname和avatar_url参数
+    * 在generateLink的options.data中传递用户信息
+    * 触发器自动将用户信息保存到profiles表
+  - 首页显示优化：
+    * 显示用户微信头像（使用Image组件）
+    * 显示用户微信昵称
+    * 头像为圆形显示，使用aspectFill模式
+    * 未设置头像时显示默认图标
 
 ## 功能说明
 

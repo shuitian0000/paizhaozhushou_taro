@@ -7,8 +7,9 @@ export type FeedbackStatus = 'pending' | 'reviewed' | 'resolved'
 
 export interface Profile {
   id: string
-  username: string | null
-  openid: string | null
+  openid: string
+  nickname: string
+  avatar_url: string | null
   role: UserRole
   created_at: string
 }

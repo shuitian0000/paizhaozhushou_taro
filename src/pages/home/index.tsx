@@ -1,4 +1,4 @@
-import {ScrollView, Text, View} from '@tarojs/components'
+import {Image, ScrollView, Text, View} from '@tarojs/components'
 import Taro, {useDidShow} from '@tarojs/taro'
 import {useCallback, useState} from 'react'
 import type {Profile} from '@/db/types'
@@ -51,11 +51,13 @@ export default function Home() {
           {user ? (
             <View className="mt-6 bg-card rounded-2xl p-4 shadow-card border border-border">
               <View className="flex flex-row items-center">
-                <View className="i-mdi-account-circle text-3xl text-primary mr-3" />
+                {user.avatar_url ? (
+                  <Image src={user.avatar_url} mode="aspectFill" className="w-12 h-12 rounded-full mr-3" />
+                ) : (
+                  <View className="i-mdi-account-circle text-3xl text-primary mr-3" />
+                )}
                 <View className="flex-1">
-                  <Text className="text-base font-semibold text-foreground">
-                    {user.username || `用户${user.id.slice(0, 8)}`}
-                  </Text>
+                  <Text className="text-base font-semibold text-foreground">{user.nickname}</Text>
                   <Text className="text-xs text-muted-foreground">已登录</Text>
                 </View>
               </View>

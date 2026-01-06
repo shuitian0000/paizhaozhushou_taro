@@ -41,25 +41,42 @@ export async function isLoggedIn(): Promise<boolean> {
   return userId !== null
 }
 
-// 微信小程序登录
+// 微信小程序登录（获取用户信息）
 export async function wechatLogin(): Promise<{success: boolean; message?: string}> {
   try {
     if (Taro.getEnv() !== Taro.ENV_TYPE.WEAPP) {
       return {
         success: false,
-        message: '微信授权登录请在小程序体验，网页端请使用用户名密码登录'
+        message: '微信授权登录仅支持在小程序中使用'
       }
     }
 
-    // 获取微信登录code
+    // 1. 获取用户信息授权
+    let userInfo: any = null
+    try {
+      const userInfoResult = await Taro.getUserProfile({
+        desc: '用于完善用户资料'
+      })
+      userInfo = userInfoResult.userInfo
+      console.log('获取用户信息成功:', userInfo)
+    } catch (error) {
+      console.error('获取用户信息失败:', error)
+      return {success: false, message: '需要授权获取用户信息才能登录'}
+    }
+
+    // 2. 获取微信登录code
     const loginResult = await Taro.login()
     if (!loginResult.code) {
       return {success: false, message: '获取微信登录code失败'}
     }
 
-    // 调用Edge Function
+    // 3. 调用Edge Function，传递code和用户信息
     const {data, error} = await supabase.functions.invoke('wechat-miniprogram-login', {
-      body: {code: loginResult.code}
+      body: {
+        code: loginResult.code,
+        nickname: userInfo?.nickName || '微信用户',
+        avatar_url: userInfo?.avatarUrl || null
+      }
     })
 
     if (error) {
@@ -71,7 +88,7 @@ export async function wechatLogin(): Promise<{success: boolean; message?: string
       return {success: false, message: '登录失败，未获取到token'}
     }
 
-    // 验证OTP
+    // 4. 验证OTP
     const {error: verifyError} = await supabase.auth.verifyOtp({
       token_hash: data.token,
       type: 'email'
@@ -85,66 +102,6 @@ export async function wechatLogin(): Promise<{success: boolean; message?: string
   } catch (error: any) {
     console.error('微信登录失败:', error)
     return {success: false, message: error.message || '登录失败'}
-  }
-}
-
-// 用户名密码登录
-export async function usernameLogin(username: string, password: string): Promise<{success: boolean; message?: string}> {
-  try {
-    if (!username || !password) {
-      return {success: false, message: '用户名和密码不能为空'}
-    }
-
-    // 用户名转换为邮箱格式
-    const email = `${username}@miaoda.com`
-
-    const {error} = await supabase.auth.signInWithPassword({
-      email,
-      password
-    })
-
-    if (error) {
-      return {success: false, message: error.message}
-    }
-
-    return {success: true}
-  } catch (error: any) {
-    console.error('登录失败:', error)
-    return {success: false, message: error.message || '登录失败'}
-  }
-}
-
-// 用户名密码注册
-export async function usernameRegister(
-  username: string,
-  password: string
-): Promise<{success: boolean; message?: string}> {
-  try {
-    if (!username || !password) {
-      return {success: false, message: '用户名和密码不能为空'}
-    }
-
-    // 验证用户名格式（只允许字母、数字和下划线）
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      return {success: false, message: '用户名只能包含字母、数字和下划线'}
-    }
-
-    // 用户名转换为邮箱格式
-    const email = `${username}@miaoda.com`
-
-    const {error} = await supabase.auth.signUp({
-      email,
-      password
-    })
-
-    if (error) {
-      return {success: false, message: error.message}
-    }
-
-    return {success: true}
-  } catch (error: any) {
-    console.error('注册失败:', error)
-    return {success: false, message: error.message || '注册失败'}
   }
 }
 
