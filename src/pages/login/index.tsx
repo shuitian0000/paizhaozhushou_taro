@@ -1,4 +1,4 @@
-import {Button, ScrollView, Text, View} from '@tarojs/components'
+import {Button, Image, Input, ScrollView, Text, View} from '@tarojs/components'
 import Taro, {useDidShow} from '@tarojs/taro'
 import {useCallback, useState} from 'react'
 import {getAndClearLoginRedirectPath, wechatLogin} from '@/utils/auth'
@@ -6,10 +6,14 @@ import {getAndClearLoginRedirectPath, wechatLogin} from '@/utils/auth'
 export default function LoginPage() {
   const [agreed, setAgreed] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [nickname, setNickname] = useState('')
+  const [avatarUrl, setAvatarUrl] = useState('')
 
   useDidShow(() => {
     // 重置状态
     setAgreed(false)
+    setNickname('')
+    setAvatarUrl('')
   })
 
   // 登录成功后的处理
@@ -30,6 +34,19 @@ export default function LoginPage() {
     }
   }, [])
 
+  // 选择头像
+  const handleChooseAvatar = useCallback((e: any) => {
+    const {avatarUrl: url} = e.detail
+    setAvatarUrl(url)
+    console.log('选择头像:', url)
+  }, [])
+
+  // 输入昵称
+  const handleNicknameInput = useCallback((e: any) => {
+    const value = e.detail.value
+    setNickname(value)
+  }, [])
+
   // 微信登录
   const handleWechatLogin = useCallback(async () => {
     if (!agreed) {
@@ -37,10 +54,15 @@ export default function LoginPage() {
       return
     }
 
+    if (!nickname || !avatarUrl) {
+      Taro.showToast({title: '请先选择头像和输入昵称', icon: 'none'})
+      return
+    }
+
     if (loading) return
 
     setLoading(true)
-    const result = await wechatLogin()
+    const result = await wechatLogin(nickname, avatarUrl)
     setLoading(false)
 
     if (result.success) {
@@ -60,7 +82,7 @@ export default function LoginPage() {
         Taro.showToast({title: result.message || '登录失败', icon: 'none', duration: 2000})
       }
     }
-  }, [agreed, loading, handleLoginSuccess])
+  }, [agreed, loading, nickname, avatarUrl, handleLoginSuccess])
 
   return (
     <View className="min-h-screen bg-gradient-dark">
@@ -76,6 +98,48 @@ export default function LoginPage() {
           {/* 登录卡片 */}
           <View className="bg-card rounded-2xl p-6 shadow-elegant mb-6">
             <Text className="text-xl font-bold text-foreground block mb-6 text-center">微信登录</Text>
+
+            {/* 头像和昵称填写 */}
+            <View className="mb-6">
+              <Text className="text-sm text-foreground block mb-3">完善个人信息</Text>
+
+              {/* 头像选择 */}
+              <View className="flex flex-col items-center mb-4">
+                <Button
+                  className="p-0 bg-transparent border-0"
+                  style={{background: 'transparent', border: 'none', padding: 0}}
+                  openType="chooseAvatar"
+                  onChooseAvatar={handleChooseAvatar}>
+                  <View className="relative">
+                    {avatarUrl ? (
+                      <Image src={avatarUrl} mode="aspectFill" className="w-20 h-20 rounded-full" />
+                    ) : (
+                      <View className="w-20 h-20 rounded-full bg-muted flex items-center justify-center">
+                        <View className="i-mdi-camera text-3xl text-muted-foreground" />
+                      </View>
+                    )}
+                    <View className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                      <View className="i-mdi-pencil text-sm text-white" />
+                    </View>
+                  </View>
+                </Button>
+                <Text className="text-xs text-muted-foreground mt-2">点击选择头像</Text>
+              </View>
+
+              {/* 昵称输入 */}
+              <View className="bg-input rounded-xl border border-border px-4 py-3">
+                <Input
+                  type="nickname"
+                  className="w-full text-foreground"
+                  style={{padding: 0, border: 'none', background: 'transparent'}}
+                  placeholder="请输入昵称"
+                  placeholderClass="text-muted-foreground"
+                  value={nickname}
+                  onInput={handleNicknameInput}
+                />
+              </View>
+              <Text className="text-xs text-muted-foreground mt-2">* 头像和昵称仅用于个人资料展示</Text>
+            </View>
 
             {/* 功能说明 */}
             <View className="bg-muted/30 rounded-xl p-4 mb-6">

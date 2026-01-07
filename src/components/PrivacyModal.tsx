@@ -104,10 +104,18 @@ export default function PrivacyModal({onAgree, onDisagree}: PrivacyModalProps) {
             </View>
           </View>
 
-          <Text className="text-xs text-muted-foreground leading-relaxed block">我们承诺：</Text>
+          <Text className="text-xs text-muted-foreground leading-relaxed block mb-1">我们承诺：</Text>
           <Text className="text-xs text-muted-foreground leading-relaxed block">• 不会上传或保存您的照片到云端</Text>
           <Text className="text-xs text-muted-foreground leading-relaxed block">• 所有照片分析均在本地完成</Text>
           <Text className="text-xs text-muted-foreground leading-relaxed block">• 仅保存评估结果，不保存照片URL</Text>
+          <Text className="text-xs text-muted-foreground leading-relaxed block">• 评估记录保存30天后自动删除</Text>
+          <Text className="text-xs text-muted-foreground leading-relaxed block">
+            • 您可以随时删除历史记录或注销账号
+          </Text>
+
+          <Text className="text-xs text-muted-foreground leading-relaxed block mt-4">
+            第三方服务：我们使用Supabase提供数据存储服务（仅存储评估结果，不存储照片）
+          </Text>
 
           <Text className="text-xs text-muted-foreground leading-relaxed block mt-4">
             请阅读并同意

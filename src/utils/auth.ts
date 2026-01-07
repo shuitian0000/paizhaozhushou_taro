@@ -41,8 +41,8 @@ export async function isLoggedIn(): Promise<boolean> {
   return userId !== null
 }
 
-// 微信小程序登录（获取用户信息）
-export async function wechatLogin(): Promise<{success: boolean; message?: string}> {
+// 微信小程序登录（使用头像昵称填写组件）
+export async function wechatLogin(nickname: string, avatarUrl: string): Promise<{success: boolean; message?: string}> {
   try {
     if (Taro.getEnv() !== Taro.ENV_TYPE.WEAPP) {
       return {
@@ -51,31 +51,18 @@ export async function wechatLogin(): Promise<{success: boolean; message?: string
       }
     }
 
-    // 1. 获取用户信息授权
-    let userInfo: any = null
-    try {
-      const userInfoResult = await Taro.getUserProfile({
-        desc: '用于完善用户资料'
-      })
-      userInfo = userInfoResult.userInfo
-      console.log('获取用户信息成功:', userInfo)
-    } catch (error) {
-      console.error('获取用户信息失败:', error)
-      return {success: false, message: '需要授权获取用户信息才能登录'}
-    }
-
-    // 2. 获取微信登录code
+    // 获取微信登录code
     const loginResult = await Taro.login()
     if (!loginResult.code) {
       return {success: false, message: '获取微信登录code失败'}
     }
 
-    // 3. 调用Edge Function，传递code和用户信息
+    // 调用Edge Function，传递code和用户信息
     const {data, error} = await supabase.functions.invoke('wechat-miniprogram-login', {
       body: {
         code: loginResult.code,
-        nickname: userInfo?.nickName || '微信用户',
-        avatar_url: userInfo?.avatarUrl || null
+        nickname: nickname || '微信用户',
+        avatar_url: avatarUrl || null
       }
     })
 
@@ -88,7 +75,7 @@ export async function wechatLogin(): Promise<{success: boolean; message?: string
       return {success: false, message: '登录失败，未获取到token'}
     }
 
-    // 4. 验证OTP
+    // 验证OTP
     const {error: verifyError} = await supabase.auth.verifyOtp({
       token_hash: data.token,
       type: 'email'
