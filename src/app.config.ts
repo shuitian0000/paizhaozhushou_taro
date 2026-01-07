@@ -8,8 +8,8 @@ const pages = [
   'pages/feedback/index'
 ]
 
-//  To fully leverage TypeScript's type safety and ensure its correctness, always enclose the configuration object within the global defineAppConfig helper function.
-export default defineAppConfig({
+// Taro小程序配置文件，直接导出配置对象
+export default {
   pages,
   permission: {
     'scope.camera': {
@@ -21,7 +21,7 @@ export default defineAppConfig({
   },
   // 隐私保护配置
   __usePrivacyCheck__: true,
-  requiredPrivateInfos: ['chooseImage', 'chooseMedia', 'saveImageToPhotosAlbum', 'camera'] as any,
+  requiredPrivateInfos: ['chooseImage', 'chooseMedia', 'saveImageToPhotosAlbum', 'camera'],
   tabBar: {
     color: '#8B9AAD',
     selectedColor: '#1E5EFF',
@@ -48,4 +48,4 @@ export default defineAppConfig({
     navigationBarTitleText: '智能摄影助手',
     navigationBarTextStyle: 'white'
   }
-})
+}
