@@ -113,6 +113,18 @@
   - [x] 创建快速检查清单（MIAODA_QUICK_CHECKLIST.md）
   - [x] 提供完善配置描述的具体建议
   - [x] 提供联系秒哒技术支持的模板
+- [x] 步骤28：分析和优化requiredPrivateInfos配置（第二十二轮）
+  - [x] 分析app.config.ts中的requiredPrivateInfos字段配置
+  - [x] 检查代码中实际使用的隐私接口
+    - [x] chooseImage：✅ 使用中（upload页面、feedback页面）
+    - [x] chooseMedia：❌ 未使用（代码中无调用）
+    - [x] saveImageToPhotosAlbum：✅ 使用中（camera页面）
+    - [x] camera：✅ 使用中（camera页面的Camera组件）
+  - [x] 创建详细分析报告（REQUIRED_PRIVATE_INFOS_ANALYSIS.md）
+  - [x] 删除未使用的chooseMedia接口声明
+    - [x] 修改app.config.ts，从4项减少到3项
+    - [x] 保留实际使用的3个接口：chooseImage、saveImageToPhotosAlbum、camera
+  - [x] 验证修改：运行lint检查通过
 
 ## 完成情况
 ✅ 所有功能已实现完成
@@ -363,6 +375,52 @@
     * 不要频繁重试，配置修改后需要等待10-15分钟同步
     * 配置描述要详细完整，说明具体的使用场景和数据处理方式
     * 及时联系秒哒技术支持，代开发模式的问题需要平台协助解决
+
+✅ 分析和优化requiredPrivateInfos配置（第二十二轮）：
+  - 分析当前配置：
+    * 位置：src/app.config.ts
+    * 当前声明：chooseImage、chooseMedia、saveImageToPhotosAlbum、camera（4项）
+  - 检查实际使用情况：
+    * chooseImage：✅ 使用中
+      - src/utils/upload.ts:115 - Taro.chooseImage()函数
+      - src/pages/upload/index.tsx:17 - 照片评估页面选择图片
+      - src/pages/feedback/index.tsx:27 - 反馈页面选择图片
+    * chooseMedia：❌ 未使用
+      - 搜索整个代码库，没有找到Taro.chooseMedia()的调用
+      - chooseMedia是更新的接口，可以选择图片和视频
+      - 本项目只需要选择图片，不需要视频功能
+    * saveImageToPhotosAlbum：✅ 使用中
+      - src/pages/camera/index.tsx:220 - 拍照助手页面保存照片
+      - src/pages/camera/index.tsx:287 - 拍照助手页面保存照片
+    * camera：✅ 使用中
+      - src/pages/camera/index.tsx:464 - 使用<Camera>组件
+  - 发现的问题：
+    * 声明了chooseMedia但代码中未使用
+    * 这可能导致微信审核时产生疑问（为什么声明了但不使用）
+    * 增加不必要的隐私声明，可能影响用户信任
+  - 创建详细分析报告（REQUIRED_PRIVATE_INFOS_ANALYSIS.md）：
+    * 详细列出4个隐私接口的使用情况
+    * 对比chooseImage和chooseMedia的区别
+    * 说明为什么本项目只需要chooseImage
+    * 提供修改建议和注意事项
+    * 说明修改后需要同步更新秒哒平台配置
+  - 优化配置：
+    * 删除未使用的chooseMedia接口声明
+    * 修改前：['chooseImage', 'chooseMedia', 'saveImageToPhotosAlbum', 'camera']（4项）
+    * 修改后：['chooseImage', 'saveImageToPhotosAlbum', 'camera']（3项）
+    * 只保留实际使用的接口，符合最小化原则
+  - 修改的好处：
+    * 更准确的隐私声明，只声明实际使用的接口
+    * 避免审核问题，减少微信审核时的疑问
+    * 提升用户信任，不会产生"为什么声明了但不用"的疑虑
+    * 简化配置，减少不必要的配置项
+  - 验证修改：
+    * 运行lint检查通过（仅剩已知可忽略错误）
+    * 配置文件语法正确
+  - 重要提醒：
+    * 修改代码后，必须同步更新秒哒平台的隐私保护指引配置
+    * 删除或不配置chooseMedia相关的隐私信息采集
+    * 保持其他3项配置不变
 
 ## 功能说明
 
