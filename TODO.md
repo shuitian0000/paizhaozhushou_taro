@@ -179,6 +179,24 @@
     - [x] 理由4：配置简单无副作用
     - [x] 理由5：避免潜在兼容性问题
   - [x] 决策：保持现状，不做修改
+- [x] 步骤32：验证requiredPrivateInfos配置正确性（第二十六轮）
+  - [x] 逐一验证配置的3个隐私接口：
+    - [x] chooseImage：✅ 使用中（upload.ts、upload页面、feedback页面）
+    - [x] saveImageToPhotosAlbum：✅ 使用中（camera页面2处）
+    - [x] camera：✅ 使用中（camera页面Camera组件）
+  - [x] 检查是否遗漏其他隐私接口：
+    - [x] getLocation：❌ 未使用
+    - [x] chooseMedia：❌ 未使用
+    - [x] getPhoneNumber：❌ 未使用
+    - [x] getUserInfo：❌ 未使用
+    - [x] getUserProfile：❌ 未使用
+  - [x] 配置完整性检查：✅ 所有使用的接口都已声明，无遗漏
+  - [x] 配置准确性检查：✅ 所有声明的接口都在使用，无多余
+  - [x] 配置合规性检查：✅ 符合微信小程序隐私保护要求和最小化原则
+  - [x] 配置一致性检查：✅ 配置与代码实际使用情况完全一致
+  - [x] 权限配置对应检查：✅ permission配置与requiredPrivateInfos对应正确
+  - [x] 创建配置验证报告（REQUIRED_PRIVATE_INFOS_VERIFICATION.md）
+  - [x] 结论：配置完全正确，保持现状不做任何修改
 
 ## 完成情况
 ✅ 所有功能已实现完成
