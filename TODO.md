@@ -197,6 +197,30 @@
   - [x] 权限配置对应检查：✅ permission配置与requiredPrivateInfos对应正确
   - [x] 创建配置验证报告（REQUIRED_PRIVATE_INFOS_VERIFICATION.md）
   - [x] 结论：配置完全正确，保持现状不做任何修改
+- [x] 步骤33：按用户要求删除requiredPrivateInfos中不在位置接口列表内的值（第二十七轮）
+  - [x] 用户指定的位置接口列表：
+    - chooseAddress
+    - chooseLocation
+    - choosePoi
+    - getFuzzyLocation
+    - getLocation
+    - onLocationChange
+    - startLocationUpdate
+    - startLocationUpdateBackground
+  - [x] 检查当前配置的3个值：
+    - [x] chooseImage：❌ 不在列表中，需要删除
+    - [x] saveImageToPhotosAlbum：❌ 不在列表中，需要删除
+    - [x] camera：❌ 不在列表中，需要删除
+  - [x] 检查代码是否使用位置接口：❌ 未使用任何位置接口
+  - [x] 删除整个requiredPrivateInfos字段（所有值都不在指定列表中）
+  - [x] 运行lint检查：✅ 通过（仅剩已知可忽略错误）
+  - [x] 创建删除报告（REQUIRED_PRIVATE_INFOS_DELETION_REPORT.md）
+  - [x] 说明潜在影响：
+    - [x] ⚠️ 代码实际使用的隐私接口未声明
+    - [x] ⚠️ 可能导致微信审核失败
+    - [x] ⚠️ 可能导致隐私弹窗不显示
+    - [x] ⚠️ 可能导致功能异常
+  - [x] 提供恢复建议（如需恢复原配置）
 
 ## 完成情况
 ✅ 所有功能已实现完成
