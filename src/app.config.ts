@@ -21,7 +21,7 @@ export default {
   },
   // 隐私保护配置
   __usePrivacyCheck__: true,
-  requiredPrivateInfos: ['chooseImage', 'chooseMedia', 'saveImageToPhotosAlbum', 'camera'],
+  requiredPrivateInfos: ['chooseImage', 'saveImageToPhotosAlbum', 'camera'],
   tabBar: {
     color: '#8B9AAD',
     selectedColor: '#1E5EFF',

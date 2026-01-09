@@ -1,25 +1,7 @@
-import {Image, ScrollView, Text, View} from '@tarojs/components'
-import Taro, {useDidShow} from '@tarojs/taro'
-import {useCallback, useState} from 'react'
-import type {Profile} from '@/db/types'
-import {getCurrentUser, getCurrentUserId, navigateToLogin} from '@/utils/auth'
+import {ScrollView, Text, View} from '@tarojs/components'
+import Taro from '@tarojs/taro'
 
 export default function Home() {
-  const [user, setUser] = useState<Profile | null>(null)
-
-  const loadUser = useCallback(async () => {
-    try {
-      const userData = await getCurrentUser()
-      setUser(userData)
-    } catch (error) {
-      console.error('加载用户信息失败:', error)
-    }
-  }, [])
-
-  useDidShow(() => {
-    loadUser()
-  })
-
   const handleRealtimeMode = () => {
     Taro.navigateTo({url: '/pages/camera/index'})
   }
@@ -32,10 +14,6 @@ export default function Home() {
     Taro.navigateTo({url: '/pages/history/index'})
   }
 
-  const handleLogin = () => {
-    navigateToLogin()
-  }
-
   return (
     <View className="min-h-screen bg-gradient-dark">
       <ScrollView scrollY style={{height: '100vh', background: 'transparent'}}>
@@ -46,36 +24,6 @@ export default function Home() {
             <Text className="text-3xl font-bold text-white text-center mb-2">智能摄影助手</Text>
             <Text className="text-base text-muted-foreground text-center">AI驱动的专业摄影指导工具</Text>
           </View>
-
-          {/* 用户信息 */}
-          {user ? (
-            <View className="mt-6 bg-card rounded-2xl p-4 shadow-card border border-border">
-              <View className="flex flex-row items-center">
-                {user.avatar_url ? (
-                  <Image src={user.avatar_url} mode="aspectFill" className="w-12 h-12 rounded-full mr-3" />
-                ) : (
-                  <View className="i-mdi-account-circle text-3xl text-primary mr-3" />
-                )}
-                <View className="flex-1">
-                  <Text className="text-base font-semibold text-foreground">{user.nickname}</Text>
-                  <Text className="text-xs text-muted-foreground">已登录</Text>
-                </View>
-              </View>
-            </View>
-          ) : (
-            <View className="mt-6 bg-card rounded-2xl p-4 shadow-card border border-border" onClick={handleLogin}>
-              <View className="flex flex-row items-center justify-between">
-                <View className="flex flex-row items-center">
-                  <View className="i-mdi-account-circle text-3xl text-muted-foreground mr-3" />
-                  <View>
-                    <Text className="text-base font-semibold text-foreground">未登录</Text>
-                    <Text className="text-xs text-muted-foreground">登录以保存评估记录</Text>
-                  </View>
-                </View>
-                <View className="i-mdi-chevron-right text-2xl text-muted-foreground" />
-              </View>
-            </View>
-          )}
         </View>
 
         {/* 功能卡片 */}
@@ -161,20 +109,7 @@ export default function Home() {
           {/* 建议和吐槽 */}
           <View
             className="bg-card rounded-2xl p-5 shadow-card border border-border"
-            onClick={async () => {
-              const userId = await getCurrentUserId()
-              if (!userId) {
-                Taro.showModal({
-                  title: '提示',
-                  content: '需要登录后才能提交反馈，是否前往登录？',
-                  success: (res) => {
-                    if (res.confirm) {
-                      navigateToLogin('/pages/home/index')
-                    }
-                  }
-                })
-                return
-              }
+            onClick={() => {
               Taro.navigateTo({url: '/pages/feedback/index'})
             }}>
             <View className="flex flex-row items-center justify-between">

@@ -145,6 +145,24 @@
     - [x] 提供进一步排查步骤
     - [x] 提供联系技术支持的模板
   - [x] 验证代码状态：运行lint检查通过
+- [x] 步骤30：优化首页和隐私配置（第二十四轮）
+  - [x] 去除首页登录状态显示
+    - [x] 删除用户信息卡片（已登录/未登录显示）
+    - [x] 删除相关状态管理代码（useState, useCallback, useDidShow）
+    - [x] 删除不需要的导入（Profile, getCurrentUser, getCurrentUserId, navigateToLogin）
+    - [x] 简化反馈按钮点击事件（去掉登录检查）
+  - [x] 梳理和优化app.config.ts隐私配置
+    - [x] 分析__usePrivacyCheck__配置：保留（必须为true才能通过审核）
+    - [x] 分析requiredPrivateInfos配置：
+      - [x] chooseImage：✅ 保留（upload页面、feedback页面使用）
+      - [x] chooseMedia：❌ 删除（代码中未使用）
+      - [x] saveImageToPhotosAlbum：✅ 保留（camera页面使用）
+      - [x] camera：✅ 保留（camera页面使用）
+    - [x] 删除未使用的chooseMedia接口
+    - [x] 优化后配置：['chooseImage', 'saveImageToPhotosAlbum', 'camera']（3项）
+  - [x] 创建隐私配置优化报告（PRIVACY_CONFIG_OPTIMIZATION.md）
+  - [x] 验证修改：运行lint检查通过（仅剩已知可忽略错误）
+  - [x] 准备清除缓存并重新构建
 
 ## 完成情况
 ✅ 所有功能已实现完成
