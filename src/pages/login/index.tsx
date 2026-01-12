@@ -22,7 +22,7 @@ export default function LoginPage() {
 
     if (redirectPath) {
       // 检查是否是tabBar页面
-      const tabBarPages = ['/pages/home/index', '/pages/history/index']
+      const tabBarPages = ['/pages/home/index', '/pages/history/index', '/pages/profile/index']
       if (tabBarPages.includes(redirectPath)) {
         Taro.switchTab({url: redirectPath})
       } else {
@@ -91,7 +91,7 @@ export default function LoginPage() {
           {/* Logo和标题 */}
           <View className="text-center mb-12 mt-8">
             <View className="i-mdi-camera text-6xl text-primary mb-4" />
-            <Text className="text-3xl font-bold gradient-text block mb-2">智能摄影助手</Text>
+            <Text className="text-3xl font-bold gradient-text block mb-2">拍Ta智能摄影助手</Text>
             <Text className="text-sm text-muted-foreground block">专业摄影评估，助力完美拍摄</Text>
           </View>
 
@@ -185,7 +185,23 @@ export default function LoginPage() {
               </View>
               <Text className="text-xs text-muted-foreground">
                 我已阅读并同意
-                <Text className="text-primary">《用户协议》</Text>和<Text className="text-primary">《隐私政策》</Text>
+                <Text
+                  className="text-primary"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    Taro.navigateTo({url: '/pages/user-agreement/index'})
+                  }}>
+                  《用户协议》
+                </Text>
+                和
+                <Text
+                  className="text-primary"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    Taro.navigateTo({url: '/pages/privacy-policy/index'})
+                  }}>
+                  《隐私政策》
+                </Text>
               </Text>
             </View>
           </View>

@@ -10,10 +10,6 @@ export default function Home() {
     Taro.navigateTo({url: '/pages/upload/index'})
   }
 
-  const handleHistory = () => {
-    Taro.navigateTo({url: '/pages/history/index'})
-  }
-
   return (
     <View className="min-h-screen bg-gradient-dark">
       <ScrollView scrollY style={{height: '100vh', background: 'transparent'}}>
@@ -21,7 +17,7 @@ export default function Home() {
         <View className="px-6 pt-12 pb-8">
           <View className="flex flex-col items-center">
             <View className="i-mdi-camera-iris text-6xl text-primary mb-4" />
-            <Text className="text-3xl font-bold text-white text-center mb-2">智能摄影助手</Text>
+            <Text className="text-3xl font-bold text-white text-center mb-2">拍Ta智能摄影助手</Text>
             <Text className="text-base text-muted-foreground text-center">AI驱动的专业摄影指导工具</Text>
           </View>
         </View>
@@ -89,38 +85,6 @@ export default function Home() {
                 </View>
               </View>
               <View className="i-mdi-chevron-right text-3xl text-white ml-4" />
-            </View>
-          </View>
-
-          {/* 历史记录 */}
-          <View className="bg-card rounded-2xl p-5 shadow-card border border-border" onClick={handleHistory}>
-            <View className="flex flex-row items-center justify-between">
-              <View className="flex flex-row items-center">
-                <View className="i-mdi-history text-2xl text-primary mr-3" />
-                <View>
-                  <Text className="text-lg font-semibold text-foreground mb-1">历史记录</Text>
-                  <Text className="text-sm text-muted-foreground">查看所有评估记录</Text>
-                </View>
-              </View>
-              <View className="i-mdi-chevron-right text-2xl text-muted-foreground" />
-            </View>
-          </View>
-
-          {/* 建议和吐槽 */}
-          <View
-            className="bg-card rounded-2xl p-5 shadow-card border border-border"
-            onClick={() => {
-              Taro.navigateTo({url: '/pages/feedback/index'})
-            }}>
-            <View className="flex flex-row items-center justify-between">
-              <View className="flex flex-row items-center">
-                <View className="i-mdi-message-text text-2xl text-secondary mr-3" />
-                <View>
-                  <Text className="text-lg font-semibold text-foreground mb-1">建议和吐槽</Text>
-                  <Text className="text-sm text-muted-foreground">帮助我们改进产品</Text>
-                </View>
-              </View>
-              <View className="i-mdi-chevron-right text-2xl text-muted-foreground" />
             </View>
           </View>
         </View>

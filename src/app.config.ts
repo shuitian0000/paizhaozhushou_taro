@@ -5,7 +5,10 @@ const pages = [
   'pages/result/index',
   'pages/history/index',
   'pages/login/index',
-  'pages/feedback/index'
+  'pages/feedback/index',
+  'pages/profile/index',
+  'pages/user-agreement/index',
+  'pages/privacy-policy/index'
 ]
 
 // Taro小程序配置文件，直接导出配置对象
@@ -38,13 +41,19 @@ export default {
         text: '记录',
         iconPath: './assets/images/unselected/history.png',
         selectedIconPath: './assets/images/selected/history.png'
+      },
+      {
+        pagePath: 'pages/profile/index',
+        text: '我的',
+        iconPath: './assets/images/unselected/profile.png',
+        selectedIconPath: './assets/images/selected/profile.png'
       }
     ]
   },
   window: {
     backgroundTextStyle: 'light',
     navigationBarBackgroundColor: '#1e3a5f',
-    navigationBarTitleText: '智能摄影助手',
+    navigationBarTitleText: '拍Ta智能摄影助手',
     navigationBarTextStyle: 'white'
   }
 }
