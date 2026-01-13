@@ -22,6 +22,13 @@ export default {
       desc: '需要保存照片到您的相册'
     }
   },
+  // 隐私保护配置（微信小程序审核要求）
+  // 根据微信小程序隐私保护指引，使用以下接口必须声明
+  __usePrivacyCheck__: true,
+  requiredPrivateInfos: [
+    'chooseImage', // 选择图片接口 - 用于照片评估和头像上传
+    'saveImageToPhotosAlbum' // 保存图片到相册接口 - 用于保存评估结果
+  ],
   tabBar: {
     color: '#8B9AAD',
     selectedColor: '#1E5EFF',
