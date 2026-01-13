@@ -20,7 +20,7 @@
 
 **删除前：**
 ```typescript
-// 隐私保护配置 - 声明使用的隐私接口
+// 隐私保护配置（微信小程序审核要求）
 __usePrivacyCheck__: true,
 requiredPrivateInfos: [
   'chooseImage',           // 选择图片接口 - 不在指定列表中
