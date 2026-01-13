@@ -30,10 +30,57 @@ export default function CameraPage() {
   console.log('evaluationCount:', evaluationCount)
   console.log('cameraPosition:', cameraPosition)
 
-  // 页面显示时重置状态
+  // 检查并请求摄像头权限
+  const checkCameraPermission = useCallback(async () => {
+    if (!isWeapp) return true // 非小程序环境跳过
+
+    try {
+      console.log('🔍 检查摄像头权限')
+      const {authSetting} = await Taro.getSetting()
+
+      if (authSetting['scope.camera'] === false) {
+        // 用户之前拒绝过，需要引导打开设置
+        console.log('⚠️ 用户之前拒绝了摄像头权限')
+        Taro.showModal({
+          title: '需要摄像头权限',
+          content: '请在设置中允许访问摄像头，以使用拍照助手功能',
+          confirmText: '去设置',
+          success: (res) => {
+            if (res.confirm) {
+              Taro.openSetting()
+            }
+          }
+        })
+        return false
+      } else if (authSetting['scope.camera'] === undefined) {
+        // 还未授权，主动请求
+        console.log('📝 主动请求摄像头权限')
+        try {
+          await Taro.authorize({scope: 'scope.camera'})
+          console.log('✅ 摄像头权限授权成功')
+          return true
+        } catch (error) {
+          console.error('❌ 摄像头权限授权失败:', error)
+          return false
+        }
+      } else {
+        // 已授权
+        console.log('✅ 摄像头权限已授权')
+        return true
+      }
+    } catch (error) {
+      console.error('❌ 检查摄像头权限失败:', error)
+      return false
+    }
+  }, [isWeapp])
+
+  // 页面显示时检查权限
   useDidShow(() => {
     console.log('📱 页面显示')
-    // 不再自动初始化，等待 Camera 组件的 onInitDone 事件
+    if (isWeapp) {
+      // 微信小程序环境，检查权限
+      checkCameraPermission()
+    }
   })
 
   // 清理定时器

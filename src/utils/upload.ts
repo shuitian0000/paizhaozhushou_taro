@@ -112,6 +112,33 @@ export function getPublicUrl(path: string): string {
  */
 export async function chooseImage(count = 1): Promise<UploadFileInput[] | null> {
   try {
+    // 检查是否在微信小程序环境
+    const isWeapp = Taro.getEnv() === Taro.ENV_TYPE.WEAPP
+
+    // 微信小程序环境，检查相册权限
+    if (isWeapp) {
+      try {
+        const {authSetting} = await Taro.getSetting()
+
+        // 如果用户之前拒绝过相册权限
+        if (authSetting['scope.album'] === false) {
+          const modalRes = await Taro.showModal({
+            title: '需要相册权限',
+            content: '请在设置中允许访问相册，以选择照片',
+            confirmText: '去设置',
+            cancelText: '取消'
+          })
+
+          if (modalRes.confirm) {
+            await Taro.openSetting()
+          }
+          return null
+        }
+      } catch (error) {
+        console.error('检查相册权限失败:', error)
+      }
+    }
+
     const res = await Taro.chooseImage({
       count,
       sizeType: ['compressed'],
@@ -126,8 +153,18 @@ export async function chooseImage(count = 1): Promise<UploadFileInput[] | null> 
     }))
 
     return uploadFiles
-  } catch (error) {
+  } catch (error: any) {
     console.error('选择图片失败:', error)
+
+    // 处理用户拒绝授权的情况
+    if (error.errMsg?.includes('auth')) {
+      Taro.showModal({
+        title: '需要相册权限',
+        content: '请允许访问相册以选择照片',
+        showCancel: false
+      })
+    }
+
     return null
   }
 }
