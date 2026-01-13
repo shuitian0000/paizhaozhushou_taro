@@ -25,14 +25,10 @@ export default function CameraPage() {
   console.log('evaluationCount:', evaluationCount)
   console.log('cameraPosition:', cameraPosition)
 
-  // 页面显示时初始化相机
+  // 页面显示时重置状态
   useDidShow(() => {
-    console.log('📱 页面显示，初始化相机')
-
-    // 延迟1秒后初始化CameraContext
-    setTimeout(() => {
-      initCamera()
-    }, 1000)
+    console.log('📱 页面显示')
+    // 不再自动初始化，等待 Camera 组件的 onInitDone 事件
   })
 
   // 清理定时器
@@ -57,7 +53,6 @@ export default function CameraPage() {
       if (ctx) {
         cameraCtxRef.current = ctx
         console.log('✅ CameraContext已创建')
-        Taro.showToast({title: '相机已就绪', icon: 'success', duration: 1500})
       } else {
         console.error('❌ CameraContext创建失败')
         Taro.showToast({title: '相机初始化失败', icon: 'none'})
@@ -65,6 +60,37 @@ export default function CameraPage() {
     } catch (error) {
       console.error('❌ 初始化相机异常:', error)
       Taro.showToast({title: '相机初始化异常', icon: 'none'})
+    }
+  }, [])
+
+  // Camera 组件初始化完成回调
+  const handleCameraReady = useCallback(() => {
+    console.log('✅ Camera 组件初始化完成')
+    // Camera 组件就绪后再创建 CameraContext
+    setTimeout(() => {
+      initCamera()
+      Taro.showToast({title: '相机已就绪', icon: 'success', duration: 1500})
+    }, 500)
+  }, [initCamera])
+
+  // Camera 组件错误回调
+  const handleCameraError = useCallback((e: any) => {
+    console.error('❌ Camera 组件错误:', e)
+    const errorMsg = e.detail?.errMsg || '相机初始化失败'
+
+    if (errorMsg.includes('auth')) {
+      Taro.showModal({
+        title: '需要相机权限',
+        content: '请在设置中允许访问相机',
+        confirmText: '去设置',
+        success: (res) => {
+          if (res.confirm) {
+            Taro.openSetting()
+          }
+        }
+      })
+    } else {
+      Taro.showToast({title: errorMsg, icon: 'none', duration: 2000})
     }
   }, [])
 
@@ -463,8 +489,11 @@ export default function CameraPage() {
           {/* Camera组件 */}
           <Camera
             className="w-full h-full"
+            mode="normal"
             devicePosition={cameraPosition}
             flash="off"
+            onInitDone={handleCameraReady}
+            onError={handleCameraError}
             style={{width: '100%', height: '100%'}}
           />
 
