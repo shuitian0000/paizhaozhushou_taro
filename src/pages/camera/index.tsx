@@ -19,7 +19,12 @@ export default function CameraPage() {
   const isProcessingRef = useRef(false)
   const retryCountRef = useRef(0)
 
+  // 检查运行环境
+  const isWeapp = Taro.getEnv() === Taro.ENV_TYPE.WEAPP
+  const isH5 = Taro.getEnv() === Taro.ENV_TYPE.WEB
+
   console.log('📱 拍照助手页面')
+  console.log('运行环境:', isWeapp ? '微信小程序' : isH5 ? 'H5浏览器' : '其他')
   console.log('mode:', mode)
   console.log('isEvaluating:', isEvaluating)
   console.log('evaluationCount:', evaluationCount)
@@ -483,8 +488,30 @@ export default function CameraPage() {
 
   return (
     <View className="min-h-screen bg-gradient-dark">
-      {/* 预览模式 */}
-      {mode === 'preview' && (
+      {/* H5 环境提示 */}
+      {isH5 && (
+        <View className="flex flex-col items-center justify-center min-h-screen p-6">
+          <View className="bg-card rounded-2xl p-8 max-w-md w-full text-center">
+            <View className="i-mdi-camera-off text-6xl text-muted-foreground mb-4 mx-auto" />
+            <Text className="text-xl font-bold text-foreground mb-4 block">拍照助手功能仅在微信小程序中可用</Text>
+            <Text className="text-sm text-muted-foreground mb-6 block leading-relaxed">
+              当前运行在浏览器环境，无法使用摄像头实时评估功能。
+            </Text>
+            <Text className="text-sm text-muted-foreground mb-6 block leading-relaxed">
+              请在微信中搜索"拍Ta智能摄影助手"小程序，或扫描小程序码使用完整功能。
+            </Text>
+            <Button
+              className="w-full bg-primary text-white py-4 rounded-xl break-keep text-base"
+              size="default"
+              onClick={() => Taro.switchTab({url: '/pages/home/index'})}>
+              返回首页
+            </Button>
+          </View>
+        </View>
+      )}
+
+      {/* 微信小程序环境 - 正常功能 */}
+      {isWeapp && mode === 'preview' && (
         <View className="relative" style={{height: '100vh'}}>
           {/* Camera组件 */}
           <Camera
@@ -719,8 +746,8 @@ export default function CameraPage() {
         </View>
       )}
 
-      {/* 已拍摄模式 */}
-      {mode === 'captured' && currentImage && evaluation && (
+      {/* 已拍摄模式 - 仅微信小程序环境 */}
+      {isWeapp && mode === 'captured' && currentImage && evaluation && (
         <ScrollView scrollY style={{height: '100vh', background: 'transparent'}}>
           <View className="px-6 py-8">
             {/* 标题 */}

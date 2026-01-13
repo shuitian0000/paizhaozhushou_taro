@@ -2,12 +2,17 @@ import {Button, Image, Input, ScrollView, Text, View} from '@tarojs/components'
 import Taro, {useDidShow} from '@tarojs/taro'
 import {useCallback, useState} from 'react'
 import {getAndClearLoginRedirectPath, wechatLogin} from '@/utils/auth'
+import {chooseImage} from '@/utils/upload'
 
 export default function LoginPage() {
   const [agreed, setAgreed] = useState(false)
   const [loading, setLoading] = useState(false)
   const [nickname, setNickname] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
+
+  // 检查运行环境
+  const isWeapp = Taro.getEnv() === Taro.ENV_TYPE.WEAPP
+  const isH5 = Taro.getEnv() === Taro.ENV_TYPE.WEB
 
   useDidShow(() => {
     // 重置状态
@@ -34,11 +39,20 @@ export default function LoginPage() {
     }
   }, [])
 
-  // 选择头像
+  // 选择头像（微信小程序）
   const handleChooseAvatar = useCallback((e: any) => {
     const {avatarUrl: url} = e.detail
     setAvatarUrl(url)
     console.log('选择头像:', url)
+  }, [])
+
+  // 选择头像（H5环境）
+  const handleChooseAvatarH5 = useCallback(async () => {
+    const images = await chooseImage(1)
+    if (images && images.length > 0) {
+      setAvatarUrl(images[0].path)
+      console.log('选择头像(H5):', images[0].path)
+    }
   }, [])
 
   // 输入昵称
@@ -105,24 +119,48 @@ export default function LoginPage() {
 
               {/* 头像选择 */}
               <View className="flex flex-col items-center mb-4">
-                <Button
-                  className="p-0 bg-transparent border-0"
-                  style={{background: 'transparent', border: 'none', padding: 0}}
-                  openType="chooseAvatar"
-                  onChooseAvatar={handleChooseAvatar}>
-                  <View className="relative">
-                    {avatarUrl ? (
-                      <Image src={avatarUrl} mode="aspectFill" className="w-20 h-20 rounded-full" />
-                    ) : (
-                      <View className="w-20 h-20 rounded-full bg-muted flex items-center justify-center">
-                        <View className="i-mdi-camera text-3xl text-muted-foreground" />
+                {/* 微信小程序环境 */}
+                {isWeapp && (
+                  <Button
+                    className="p-0 bg-transparent border-0"
+                    style={{background: 'transparent', border: 'none', padding: 0}}
+                    openType="chooseAvatar"
+                    onChooseAvatar={handleChooseAvatar}>
+                    <View className="relative">
+                      {avatarUrl ? (
+                        <Image src={avatarUrl} mode="aspectFill" className="w-20 h-20 rounded-full" />
+                      ) : (
+                        <View className="w-20 h-20 rounded-full bg-muted flex items-center justify-center">
+                          <View className="i-mdi-camera text-3xl text-muted-foreground" />
+                        </View>
+                      )}
+                      <View className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                        <View className="i-mdi-pencil text-sm text-white" />
                       </View>
-                    )}
-                    <View className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                      <View className="i-mdi-pencil text-sm text-white" />
                     </View>
-                  </View>
-                </Button>
+                  </Button>
+                )}
+
+                {/* H5 环境 */}
+                {isH5 && (
+                  <Button
+                    className="p-0 bg-transparent border-0"
+                    style={{background: 'transparent', border: 'none', padding: 0}}
+                    onClick={handleChooseAvatarH5}>
+                    <View className="relative">
+                      {avatarUrl ? (
+                        <Image src={avatarUrl} mode="aspectFill" className="w-20 h-20 rounded-full" />
+                      ) : (
+                        <View className="w-20 h-20 rounded-full bg-muted flex items-center justify-center">
+                          <View className="i-mdi-camera text-3xl text-muted-foreground" />
+                        </View>
+                      )}
+                      <View className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                        <View className="i-mdi-pencil text-sm text-white" />
+                      </View>
+                    </View>
+                  </Button>
+                )}
                 <Text className="text-xs text-muted-foreground mt-2">点击选择头像</Text>
               </View>
 
