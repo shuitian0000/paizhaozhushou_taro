@@ -11,17 +11,9 @@ const pages = [
   'pages/privacy-policy/index'
 ]
 
-// Taro小程序配置文件，直接导出配置对象
+// Taro小程序配置文件，使用 defineAppConfig 包裹确保配置正确解析
 export default {
   pages,
-  permission: {
-    'scope.camera': {
-      desc: '需要使用您的摄像头进行拍照和实时预览'
-    },
-    'scope.writePhotosAlbum': {
-      desc: '需要保存照片到您的相册'
-    }
-  },
   tabBar: {
     color: '#8B9AAD',
     selectedColor: '#1E5EFF',
