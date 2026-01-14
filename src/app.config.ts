@@ -18,6 +18,9 @@ export default {
     'scope.camera': {
       desc: '需要使用您的摄像头进行拍照和实时预览'
     },
+    'scope.album': {
+      desc: '需要访问您的相册以选择照片'
+    },
     'scope.writePhotosAlbum': {
       desc: '需要保存照片到您的相册'
     }
