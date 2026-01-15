@@ -1,5 +1,5 @@
 import {Button, Camera, Image, ScrollView, Text, View} from '@tarojs/components'
-import Taro, {useDidShow} from '@tarojs/taro'
+import Taro from '@tarojs/taro'
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {createEvaluation} from '@/db/api'
 import {getCurrentUserId} from '@/utils/auth'
@@ -29,59 +29,6 @@ export default function CameraPage() {
   console.log('isEvaluating:', isEvaluating)
   console.log('evaluationCount:', evaluationCount)
   console.log('cameraPosition:', cameraPosition)
-
-  // 检查并请求摄像头权限
-  const checkCameraPermission = useCallback(async () => {
-    if (!isWeapp) return true // 非小程序环境跳过
-
-    try {
-      console.log('🔍 检查摄像头权限')
-      const {authSetting} = await Taro.getSetting()
-
-      if (authSetting['scope.camera'] === false) {
-        // 用户之前拒绝过，需要引导打开设置
-        console.log('⚠️ 用户之前拒绝了摄像头权限')
-        Taro.showModal({
-          title: '需要摄像头权限',
-          content: '请在设置中允许访问摄像头，以使用拍照助手功能',
-          confirmText: '去设置',
-          success: (res) => {
-            if (res.confirm) {
-              Taro.openSetting()
-            }
-          }
-        })
-        return false
-      } else if (authSetting['scope.camera'] === undefined) {
-        // 还未授权，主动请求
-        console.log('📝 主动请求摄像头权限')
-        try {
-          await Taro.authorize({scope: 'scope.camera'})
-          console.log('✅ 摄像头权限授权成功')
-          return true
-        } catch (error) {
-          console.error('❌ 摄像头权限授权失败:', error)
-          return false
-        }
-      } else {
-        // 已授权
-        console.log('✅ 摄像头权限已授权')
-        return true
-      }
-    } catch (error) {
-      console.error('❌ 检查摄像头权限失败:', error)
-      return false
-    }
-  }, [isWeapp])
-
-  // 页面显示时检查权限
-  useDidShow(() => {
-    console.log('📱 页面显示')
-    if (isWeapp) {
-      // 微信小程序环境，检查权限
-      checkCameraPermission()
-    }
-  })
 
   // 清理定时器
   useEffect(() => {
@@ -130,11 +77,13 @@ export default function CameraPage() {
     console.error('❌ Camera 组件错误:', e)
     const errorMsg = e.detail?.errMsg || '相机初始化失败'
 
-    if (errorMsg.includes('auth')) {
+    // 只在用户拒绝授权时引导去设置
+    if (errorMsg.includes('auth') || errorMsg.includes('authorize')) {
       Taro.showModal({
-        title: '需要相机权限',
-        content: '请在设置中允许访问相机',
+        title: '需要摄像头权限',
+        content: '请在设置中允许访问摄像头，以使用拍照助手功能',
         confirmText: '去设置',
+        cancelText: '取消',
         success: (res) => {
           if (res.confirm) {
             Taro.openSetting()
@@ -142,7 +91,11 @@ export default function CameraPage() {
         }
       })
     } else {
-      Taro.showToast({title: errorMsg, icon: 'none', duration: 2000})
+      Taro.showToast({
+        title: errorMsg,
+        icon: 'none',
+        duration: 2000
+      })
     }
   }, [])
 
