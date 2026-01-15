@@ -109,36 +109,11 @@ export function getPublicUrl(path: string): string {
 
 /**
  * 选择图片
+ * 注意：不需要手动检查权限，chooseImage 接口会自动处理权限请求
  */
 export async function chooseImage(count = 1): Promise<UploadFileInput[] | null> {
   try {
-    // 检查是否在微信小程序环境
-    const isWeapp = Taro.getEnv() === Taro.ENV_TYPE.WEAPP
-
-    // 微信小程序环境，检查相册权限
-    if (isWeapp) {
-      try {
-        const {authSetting} = await Taro.getSetting()
-
-        // 如果用户之前拒绝过相册权限
-        if (authSetting['scope.album'] === false) {
-          const modalRes = await Taro.showModal({
-            title: '需要相册权限',
-            content: '请在设置中允许访问相册，以选择照片',
-            confirmText: '去设置',
-            cancelText: '取消'
-          })
-
-          if (modalRes.confirm) {
-            await Taro.openSetting()
-          }
-          return null
-        }
-      } catch (error) {
-        console.error('检查相册权限失败:', error)
-      }
-    }
-
+    // 直接调用接口，让接口自动处理权限请求
     const res = await Taro.chooseImage({
       count,
       sizeType: ['compressed'],
@@ -156,12 +131,22 @@ export async function chooseImage(count = 1): Promise<UploadFileInput[] | null> 
   } catch (error: any) {
     console.error('选择图片失败:', error)
 
-    // 处理用户拒绝授权的情况
-    if (error.errMsg?.includes('auth')) {
-      Taro.showModal({
+    // 只在用户拒绝授权时引导去设置
+    if (error.errMsg?.includes('auth deny') || error.errMsg?.includes('authorize')) {
+      const modalRes = await Taro.showModal({
         title: '需要相册权限',
-        content: '请允许访问相册以选择照片',
-        showCancel: false
+        content: '请在设置中允许访问相册，以选择照片',
+        confirmText: '去设置',
+        cancelText: '取消'
+      })
+
+      if (modalRes.confirm) {
+        await Taro.openSetting()
+      }
+    } else {
+      Taro.showToast({
+        title: '选择图片失败',
+        icon: 'none'
       })
     }
 
