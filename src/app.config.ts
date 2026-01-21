@@ -14,6 +14,14 @@ const pages = [
 // Taro小程序配置文件，使用 defineAppConfig 包裹确保配置正确解析
 export default {
   pages,
+  permission: {
+    'scope.camera': {
+      desc: '用于拍照和预览'
+    },
+    'scope.writePhotosAlbum': {
+      desc: '保存照片到相册'
+    }
+  },
   // 隐私保护配置（微信小程序审核要求）
   __usePrivacyCheck__: true,
   tabBar: {
