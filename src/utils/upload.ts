@@ -113,12 +113,16 @@ export function getPublicUrl(path: string): string {
  */
 export async function chooseImage(count = 1): Promise<UploadFileInput[] | null> {
   try {
+    console.log('📸 开始选择图片, count:', count)
+
     // 直接调用接口，让接口自动处理权限请求
     const res = await Taro.chooseImage({
       count,
       sizeType: ['compressed'],
       sourceType: ['album', 'camera']
     })
+
+    console.log('✅ 选择图片成功:', res)
 
     const uploadFiles: UploadFileInput[] = res.tempFiles.map((file, index) => ({
       path: file.path,
@@ -129,26 +133,22 @@ export async function chooseImage(count = 1): Promise<UploadFileInput[] | null> 
 
     return uploadFiles
   } catch (error: any) {
-    console.error('选择图片失败:', error)
+    console.error('❌ 选择图片失败:', error)
+    console.error('错误详情:', JSON.stringify(error, null, 2))
+    console.error('错误消息:', error.errMsg)
 
-    // 只在用户拒绝授权时引导去设置
-    if (error.errMsg?.includes('auth deny') || error.errMsg?.includes('authorize')) {
-      const modalRes = await Taro.showModal({
-        title: '需要相册权限',
-        content: '请在设置中允许访问相册，以选择照片',
-        confirmText: '去设置',
-        cancelText: '取消'
-      })
-
-      if (modalRes.confirm) {
-        await Taro.openSetting()
+    // 显示详细的错误信息和解决方案
+    Taro.showModal({
+      title: '无法选择照片',
+      content: `${error.errMsg || '未知错误'}\n\n可能原因：\n• 权限被拒绝\n• 相册为空\n• 系统限制\n\n解决方法：\n• 在设置中开启相册权限\n• 确保相册中有照片\n• 重启微信后重试`,
+      confirmText: '去设置',
+      cancelText: '知道了',
+      success: (res) => {
+        if (res.confirm) {
+          Taro.openSetting()
+        }
       }
-    } else {
-      Taro.showToast({
-        title: '选择图片失败',
-        icon: 'none'
-      })
-    }
+    })
 
     return null
   }
