@@ -15,37 +15,18 @@ export default function UploadPage() {
   // 选择图片
   const handleChooseImage = useCallback(async () => {
     try {
-      console.log('📸 点击选择照片')
+      console.log('=== 📸 开始选择照片 ===')
+      console.log('1. 点击选择照片按钮')
 
-      // 先检查权限状态
-      const {authSetting} = await Taro.getSetting()
-      console.log('权限状态:', authSetting)
-
-      // 检查相册权限（注意：scope.album 在新版本中可能不存在）
-      if (authSetting['scope.album'] === false) {
-        // 权限被明确拒绝
-        console.warn('⚠️ 相册权限被拒绝')
-        const modalRes = await Taro.showModal({
-          title: '需要相册权限',
-          content: '选择照片需要访问相册，请在设置中允许访问相册',
-          confirmText: '去设置',
-          cancelText: '取消'
-        })
-
-        if (modalRes.confirm) {
-          await Taro.openSetting()
-        }
-        return
-      }
-
-      // 调用 chooseImage
-      console.log('调用 chooseImage...')
+      // 直接调用 chooseImage，不检查权限
+      // chooseImage 接口会自动处理权限请求
+      console.log('2. 调用 chooseImage...')
       const images = await chooseImage(1)
-      console.log('选择结果:', images)
+      console.log('3. chooseImage 返回结果:', images)
 
       if (images && images.length > 0) {
         setSelectedImage(images[0])
-        console.log('✅ 图片已选择')
+        console.log('✅ 图片已选择:', images[0])
       } else {
         console.log('ℹ️ 未选择图片')
       }

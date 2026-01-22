@@ -109,11 +109,11 @@ export function getPublicUrl(path: string): string {
 
 /**
  * 选择图片
- * 注意：不需要手动检查权限，chooseImage 接口会自动处理权限请求
+ * chooseImage 接口会自动处理权限请求，不需要手动检查权限
  */
 export async function chooseImage(count = 1): Promise<UploadFileInput[] | null> {
   try {
-    console.log('📸 开始选择图片, count:', count)
+    console.log('📸 chooseImage 开始, count:', count)
 
     // 直接调用接口，让接口自动处理权限请求
     const res = await Taro.chooseImage({
@@ -122,7 +122,7 @@ export async function chooseImage(count = 1): Promise<UploadFileInput[] | null> 
       sourceType: ['album', 'camera']
     })
 
-    console.log('✅ 选择图片成功:', res)
+    console.log('✅ chooseImage 成功, tempFiles:', res.tempFiles)
 
     const uploadFiles: UploadFileInput[] = res.tempFiles.map((file, index) => ({
       path: file.path,
@@ -133,14 +133,14 @@ export async function chooseImage(count = 1): Promise<UploadFileInput[] | null> 
 
     return uploadFiles
   } catch (error: any) {
-    console.error('❌ 选择图片失败:', error)
+    console.error('❌ chooseImage 失败:', error)
     console.error('错误详情:', JSON.stringify(error, null, 2))
     console.error('错误消息:', error.errMsg)
 
-    // 显示详细的错误信息和解决方案
+    // 简化错误处理：直接提示用户去设置
     Taro.showModal({
       title: '无法选择照片',
-      content: `${error.errMsg || '未知错误'}\n\n可能原因：\n• 权限被拒绝\n• 相册为空\n• 系统限制\n\n解决方法：\n• 在设置中开启相册权限\n• 确保相册中有照片\n• 重启微信后重试`,
+      content: '请确保已允许访问相册。如果已拒绝权限，请在设置中开启。',
       confirmText: '去设置',
       cancelText: '知道了',
       success: (res) => {

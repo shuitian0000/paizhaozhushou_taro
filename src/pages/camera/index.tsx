@@ -1,5 +1,5 @@
 import {Button, Camera, Image, ScrollView, Text, View} from '@tarojs/components'
-import Taro, {useDidShow} from '@tarojs/taro'
+import Taro from '@tarojs/taro'
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {createEvaluation} from '@/db/api'
 import {getCurrentUserId} from '@/utils/auth'
@@ -23,70 +23,16 @@ export default function CameraPage() {
   const isWeapp = Taro.getEnv() === Taro.ENV_TYPE.WEAPP
   const isH5 = Taro.getEnv() === Taro.ENV_TYPE.WEB
 
-  console.log('📱 拍照助手页面')
+  console.log('=== 📱 拍照助手页面渲染 ===')
   console.log('运行环境:', isWeapp ? '微信小程序' : isH5 ? 'H5浏览器' : '其他')
+  console.log('Taro.getEnv():', Taro.getEnv())
+  console.log('Taro.ENV_TYPE.WEAPP:', Taro.ENV_TYPE.WEAPP)
+  console.log('isWeapp:', isWeapp)
+  console.log('isH5:', isH5)
   console.log('mode:', mode)
-  console.log('isEvaluating:', isEvaluating)
   console.log('evaluationCount:', evaluationCount)
   console.log('cameraPosition:', cameraPosition)
-
-  // 页面显示时检查摄像头权限
-  useDidShow(() => {
-    if (isWeapp) {
-      checkCameraPermission()
-    }
-  })
-
-  // 检查摄像头权限
-  const checkCameraPermission = useCallback(async () => {
-    try {
-      console.log('🔍 检查摄像头权限...')
-      const {authSetting} = await Taro.getSetting()
-      console.log('权限状态:', authSetting)
-
-      // 检查摄像头权限
-      if (authSetting['scope.camera'] === false) {
-        // 权限被拒绝
-        console.warn('⚠️ 摄像头权限被拒绝')
-        Taro.showModal({
-          title: '需要摄像头权限',
-          content: '拍照助手需要使用摄像头，请在设置中允许访问摄像头',
-          confirmText: '去设置',
-          cancelText: '返回',
-          success: (res) => {
-            if (res.confirm) {
-              Taro.openSetting({
-                success: (settingRes) => {
-                  console.log('设置结果:', settingRes.authSetting)
-                  if (settingRes.authSetting['scope.camera']) {
-                    // 用户开启了权限
-                    Taro.showToast({title: '权限已开启', icon: 'success'})
-                  } else {
-                    // 用户仍未开启权限
-                    Taro.showToast({title: '请开启摄像头权限', icon: 'none'})
-                    setTimeout(() => {
-                      Taro.switchTab({url: '/pages/home/index'})
-                    }, 1500)
-                  }
-                }
-              })
-            } else {
-              // 用户取消，返回首页
-              Taro.switchTab({url: '/pages/home/index'})
-            }
-          }
-        })
-      } else if (authSetting['scope.camera'] === undefined) {
-        // 权限未请求过
-        console.log('ℹ️ 摄像头权限未请求过，等待 Camera 组件自动请求')
-      } else {
-        // 权限已允许
-        console.log('✅ 摄像头权限已允许')
-      }
-    } catch (error) {
-      console.error('❌ 检查权限失败:', error)
-    }
-  }, [])
+  console.log('是否渲染 Camera 组件:', isWeapp && mode === 'preview')
 
   // 清理定时器
   useEffect(() => {
@@ -126,7 +72,6 @@ export default function CameraPage() {
     // Camera 组件就绪后再创建 CameraContext
     setTimeout(() => {
       initCamera()
-      Taro.showToast({title: '相机已就绪', icon: 'success', duration: 1500})
     }, 500)
   }, [initCamera])
 
@@ -138,10 +83,10 @@ export default function CameraPage() {
     const errorMsg = e.detail?.errMsg || e.errMsg || '相机初始化失败'
     console.error('错误消息:', errorMsg)
 
-    // 显示详细的错误信息和解决方案
+    // 简化错误处理：直接提示用户去设置
     Taro.showModal({
       title: '摄像头无法使用',
-      content: `${errorMsg}\n\n可能原因：\n• 权限被拒绝\n• 摄像头被占用\n• 设备不支持\n\n解决方法：\n• 在设置中开启摄像头权限\n• 关闭其他使用摄像头的应用\n• 重启微信后重试`,
+      content: '请确保已允许访问摄像头。如果已拒绝权限，请在设置中开启。',
       confirmText: '去设置',
       cancelText: '知道了',
       success: (res) => {
