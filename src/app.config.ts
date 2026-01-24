@@ -22,8 +22,6 @@ export default {
       desc: '保存照片到相册'
     }
   },
-  // 隐私保护配置（微信小程序审核要求）
-  __usePrivacyCheck__: true,
   tabBar: {
     color: '#8B9AAD',
     selectedColor: '#1E5EFF',
