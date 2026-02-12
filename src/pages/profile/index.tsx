@@ -25,7 +25,7 @@ export default function ProfilePage() {
   }
 
   const handleHistory = () => {
-    Taro.navigateTo({url: '/pages/history/index'})
+    Taro.switchTab({url: '/pages/history/index'})
   }
 
   const handleFeedback = () => {
