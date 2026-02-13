@@ -28,7 +28,6 @@ lerna-debug.log*
 *.code-workspace
 
 # local env files
-.env
 .env*.local
 *.rest
 *.http

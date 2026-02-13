@@ -1,85 +1,85 @@
 # AGENTS.md - Coding Guidelines for AI Agents
 
-> This file contains essential information for AI agents working on this codebase.
+> Guidelines for AI agents working on this Taro + React WeChat Mini Program.
 
 ## Project Overview
 
-This is a **Taro + React + TypeScript** WeChat Mini Program project using:
-- **Framework**: Taro 4.1.5 with React 18
-- **State Management**: Zustand
-- **Styling**: TailwindCSS with custom CSS variables
+- **Framework**: Taro 4.1.5 + React 18 + TypeScript
+- **State**: Zustand
+- **Styling**: TailwindCSS with CSS variables
 - **Backend**: Supabase
-- **Icons**: Iconify (MDI, Lucide collections)
+- **Icons**: Iconify (MDI: `i-mdi-*`, Lucide: `i-lucide-*`)
 
-## Build/Lint Commands
+## Build/Lint/Test Commands
 
 ```bash
-# Primary validation command - USE THIS
+# Primary validation - USE THIS
 npm run lint
 
-# Package manager (REQUIRED)
+# Package manager
 pnpm
 ```
 
-**IMPORTANT**: Do NOT run `dev`, `build`, `dev:h5`, `dev:weapp`, or `build:weapp` scripts. They are disabled in this environment.
+**IMPORTANT**: Do NOT run `dev`, `build`, `dev:h5`, `dev:weapp`, or `build:weapp`.
 
 The `lint` command runs:
-1. **Biome** - Formatting and linting with auto-fix (`--write --unsafe`)
-2. **TypeScript** - Type checking via `tsgo`
-3. **Custom checks**:
-   - `checkAuth.sh` - Validates authentication patterns
-   - `checkNavigation.sh` - Validates navigation patterns
-   - `checkIconPath.sh` - Validates icon paths
+1. **Biome** - Format/lint with auto-fix
+2. **TypeScript** - Type check via `tsgo`
+3. **Custom checks** via ast-grep:
+   - `checkAuth.sh` - useAuth/AuthProvider patterns
+   - `checkNavigation.sh` - navigateTo vs switchTab
+   - `checkIconPath.sh` - Icon path validation
    - `testBuild.sh` - Build validation
 
-## Code Style Guidelines
+## Code Style (Biome)
 
-### Formatting (Biome Configuration)
 - **Indent**: 2 spaces
-- **Line width**: 120 characters
+- **Line width**: 120
 - **Line ending**: LF
-- **Quotes**: Single for JS/TS, double for CSS
-- **Semicolons**: As needed (omit when possible)
+- **Quotes**: Single (JS/TS), double (CSS)
+- **Semicolons**: As needed
 - **Trailing commas**: None
-- **Arrow parentheses**: Always
+- **Arrow parens**: Always
 - **JSX quotes**: Double
 - **Bracket same line**: true
 - **Bracket spacing**: false
 
-### Import Patterns
+## Import Patterns
+
 ```typescript
-// Path alias - ALWAYS use @/ for src/ imports
+// Path alias - ALWAYS use @/ for src/
 import {supabase} from '@/client/supabase'
 import type {Profile} from '@/db/types'
 import PrivacyModal from '@/components/PrivacyModal'
 
-// React imports - use type for type imports
-import type React from 'react'
+// React - use type for type imports
 import type {PropsWithChildren} from 'react'
 import {useState, useEffect} from 'react'
 
-// Taro imports
+// Taro
 import Taro from '@tarojs/taro'
 import {View, Text, ScrollView} from '@tarojs/components'
 ```
 
-### Naming Conventions
+## Naming Conventions
+
 - **Components**: PascalCase (e.g., `PrivacyModal.tsx`)
-- **Hooks**: camelCase with `use` prefix (e.g., `useTabBarPageClass.ts`)
-- **Utilities**: camelCase (e.g., `auth.ts`, `upload.ts`)
-- **Types/Interfaces**: PascalCase (e.g., `PhotoEvaluation`, `CreateEvaluationInput`)
-- **Constants**: UPPER_SNAKE_CASE for true constants
+- **Hooks**: camelCase with `use` prefix
+- **Utilities**: camelCase
+- **Types**: PascalCase
+- **Constants**: UPPER_SNAKE_CASE
 
-### TypeScript Guidelines
+## TypeScript Guidelines
+
 - **Strict mode**: Disabled (`strictNullChecks: false`, `noImplicitAny: false`)
-- **Always** use explicit return types for exported functions
-- Use `type` keyword for type imports
-- Use `interface` for object shapes that may be extended
-- Use `type` for unions, tuples, and mapped types
+- Always use explicit return types for exported functions
+- Use `type` for type imports
+- Use `interface` for extensible object shapes
+- Use `type` for unions/tuples
 
-### Error Handling Pattern
+## Error Handling Pattern
+
 ```typescript
-// Always wrap async operations in try-catch
 export async function getCurrentUser(): Promise<Profile | null> {
   try {
     const userId = await getCurrentUserId()
@@ -100,12 +100,14 @@ export async function getCurrentUser(): Promise<Profile | null> {
 }
 ```
 
-### Function Export Patterns
-- Use named exports for utility functions
-- Use default export for page components and React components
-- Always add JSDoc comments for public API functions
+## Function Exports
 
-### React Component Structure
+- Named exports for utilities
+- Default export for page components
+- Add JSDoc for public API functions
+
+## React Component Structure
+
 ```typescript
 // Pages use default export
 export default function Home() {
@@ -115,53 +117,53 @@ export default function Home() {
 
   return (
     <View className="min-h-screen bg-gradient-dark">
-      {/* JSX content */}
+      {/* JSX */}
     </View>
   )
 }
 ```
 
-### TailwindCSS/Styling
+## TailwindCSS/Styling
+
 - Use Tailwind utility classes in `className`
-- Custom theme colors use CSS variables (e.g., `bg-gradient-dark`, `text-primary`)
-- Icons use `i-mdi-*` or `i-lucide-*` classes
-- Always use single quotes in className for consistency
+- Custom theme: `bg-gradient-dark`, `text-primary`
+- Icons: `i-mdi-*` or `i-lucide-*`
+- Use single quotes in className
 
 ## Project Structure
 
 ```
 src/
   app.tsx              # App entry (default export)
-  app.config.ts        # Taro app config
+  app.config.ts        # Taro config
   app.scss             # Global styles
   pages/               # Page components
     page-name/
-      index.tsx        # Page component (default export)
+      index.tsx        # Page (default export)
       index.config.ts  # Page config
   components/          # Reusable components
-  hooks/               # Custom React hooks
+  hooks/               # Custom hooks
   utils/               # Utility functions
-  db/                  # Database types and API
-    types.ts           # TypeScript interfaces
-    api.ts             # Database API functions
-  client/              # Client configurations
-    supabase.ts        # Supabase client
+  db/                  # Database types & API
+  client/              # Client configs (Supabase)
   types/
-    global.d.ts        # Global type declarations
+    global.d.ts        # Global types
 ```
 
-## Key Rules & Constraints
+## Key Rules
 
-1. **Navigation**: Always use `Taro.navigateTo({url: '/pages/page-name/index'})`
-2. **TabBar pages**: Must be registered in `app.config.ts` tabBar.list
-3. **Icon paths**: Must use relative paths starting with `./assets/images/`
-4. **Environment checks**: Use `Taro.getEnv() !== Taro.ENV_TYPE.WEAPP` for platform-specific code
-5. **Storage**: Use `Taro.setStorageSync()` / `Taro.getStorageSync()` for local storage
+1. **Navigation**:
+   - Non-tab pages: `Taro.navigateTo({url: '/pages/page/index'})`
+   - Tab pages: `Taro.switchTab({url: '/pages/home/index'})`
+2. **TabBar pages**: Must be in `app.config.ts` tabBar.list
+3. **Icon paths**: Use relative paths `./assets/images/`
+4. **Environment**: Use `Taro.getEnv() !== Taro.ENV_TYPE.WEAPP`
+5. **Storage**: Use `Taro.setStorageSync()` / `Taro.getStorageSync()`
 
 ## Important Notes
 
-- This is a **WeChat Mini Program** - browser APIs are not available
-- All pages must be registered in `app.config.ts` pages array
-- Each page needs an `index.config.ts` file
-- Environment variables are accessed via `process.env.VAR_NAME`
-- Do not use `echarts-for-taro` package - it does not exist (enforced by linter)
+- WeChat Mini Program - no browser APIs
+- All pages must be registered in `app.config.ts`
+- Each page needs `index.config.ts`
+- Environment variables: `process.env.VAR_NAME`
+- **Never use `echarts-for-taro`** - package doesn't exist
