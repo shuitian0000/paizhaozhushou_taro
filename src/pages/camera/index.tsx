@@ -130,28 +130,38 @@ export default function CameraPage() {
             const result = await evaluatePhotoLocally(res.tempImagePath)
             console.log('✅ 评估完成 - 总分:', result.total_score)
 
+            // 防御性检查：确保 result 及其属性存在
+            if (!result) {
+              console.error('评估结果为空')
+              setRealtimeSuggestions(['评估失败，请重试'])
+              return
+            }
+
             // 使用详细建议（从evaluation.suggestions中提取）
             const suggestions: string[] = []
 
-            // 优先显示得分最低的维度的具体建议
-            const scores = [
-              {name: '构图', score: result.composition_score, suggestion: result.suggestions.composition},
-              {name: '角度', score: result.angle_score, suggestion: result.suggestions.angle},
-              {name: '距离', score: result.distance_score, suggestion: result.suggestions.distance},
-              {name: '机位', score: result.height_score, suggestion: result.suggestions.height},
-              {name: '姿态', score: result.pose_score || 20, suggestion: result.suggestions.pose}
+            // 防御性检查：确保 suggestions 存在
+            const evalSuggestions = result?.suggestions || {
+              composition: '',
+              angle: '',
+              distance: '',
+              height: '',
+              pose: ''
+            }
+
+            // 收集所有非空的建议
+            const allSuggestions = [
+              {name: '构图', suggestion: evalSuggestions.composition},
+              {name: '角度', suggestion: evalSuggestions.angle},
+              {name: '距离', suggestion: evalSuggestions.distance},
+              {name: '机位', suggestion: evalSuggestions.height},
+              {name: '姿态', suggestion: evalSuggestions.pose}
             ]
 
-            // 按得分排序，优先显示得分低的维度
-            scores.sort((a, b) => a.score - b.score)
-
-            // 显示前3个需要改进的维度的具体建议
-            let addedCount = 0
-            for (const item of scores) {
-              if (item.suggestion && addedCount < 3) {
-                // 添加维度标签和具体建议
+            // 显示所有有内容的建议
+            for (const item of allSuggestions) {
+              if (item.suggestion) {
                 suggestions.push(`${item.name}：${item.suggestion}`)
-                addedCount++
               }
             }
 
@@ -467,17 +477,21 @@ export default function CameraPage() {
         if (score < 20) return '构图需优化'
         if (score < 25) return '可调整主体'
         return '构图良好'
+      case 'pose':
+        if (score < 12) return '姿态需优化'
+        if (score < 16) return '可调整姿态'
+        return '姿态良好'
       case 'angle':
-        if (score < 12) return '角度欠佳'
-        if (score < 16) return '可换视角'
-        return '角度合适'
+        if (score < 12) return '立体感欠佳'
+        if (score < 16) return '可增强对比'
+        return '立体感合适'
       case 'distance':
-        if (score < 6) return '距离不当'
-        if (score < 8) return '可调距离'
+        if (score < 8) return '距离不当'
+        if (score < 11) return '可调距离'
         return '距离适中'
       case 'height':
-        if (score < 6) return '光线不足'
-        if (score < 8) return '曝光欠佳'
+        if (score < 8) return '光线不足'
+        if (score < 12) return '曝光欠佳'
         return '光线良好'
       default:
         return ''
@@ -662,7 +676,7 @@ export default function CameraPage() {
                       </View>
                       <View className="flex flex-row items-center justify-between">
                         <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
-                          角度
+                          立体感
                         </Text>
                         <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
                           {evaluation.angle_score}/20
@@ -673,7 +687,7 @@ export default function CameraPage() {
                           距离
                         </Text>
                         <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
-                          {evaluation.distance_score}/10
+                          {evaluation.distance_score}/15
                         </Text>
                       </View>
                       <View className="flex flex-row items-center justify-between">
@@ -681,7 +695,15 @@ export default function CameraPage() {
                           光线
                         </Text>
                         <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
-                          {evaluation.height_score}/10
+                          {evaluation.height_score}/15
+                        </Text>
+                      </View>
+                      <View className="flex flex-row items-center justify-between">
+                        <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                          姿态
+                        </Text>
+                        <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                          {evaluation.pose_score !== null ? `${evaluation.pose_score}/20` : '--/20'}
                         </Text>
                       </View>
                     </View>
@@ -865,7 +887,7 @@ export default function CameraPage() {
               </View>
 
               {/* 详细改进建议 */}
-              {Object.keys(evaluation.suggestions).length > 0 && (
+              {evaluation.suggestions && Object.keys(evaluation.suggestions).length > 0 && (
                 <View className="bg-muted/50 rounded-xl p-4">
                   <View className="flex flex-row items-center mb-3">
                     <View className="i-mdi-lightbulb-on text-xl text-primary mr-2" />

@@ -55,7 +55,9 @@ export default function PrivacyModal({onAgree, onDisagree}: PrivacyModalProps) {
     setVisible(false)
     const resolves = (window as any).__privacyResolves as Set<() => void>
     if (resolves) {
-      resolves.forEach((resolve) => resolve())
+      resolves.forEach((resolve) => {
+        resolve()
+      })
       resolves.clear()
     }
     onAgree()
@@ -65,7 +67,9 @@ export default function PrivacyModal({onAgree, onDisagree}: PrivacyModalProps) {
     setVisible(false)
     const rejects = (window as any).__privacyRejects as Set<() => void>
     if (rejects) {
-      rejects.forEach((reject) => reject())
+      rejects.forEach((reject) => {
+        reject()
+      })
       rejects.clear()
     }
     onDisagree()

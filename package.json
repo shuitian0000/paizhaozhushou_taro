@@ -50,7 +50,7 @@
   "devDependencies": {
     "@babel/core": "^7.28.3",
     "@babel/preset-react": "^7.24.1",
-    "@biomejs/biome": "2.3.4",
+    "@biomejs/biome": "^2.3.4",
     "@egoist/tailwindcss-icons": "^1.9.0",
     "@iconify-json/lucide": "^1.2.64",
     "@iconify-json/mdi": "^1.2.3",

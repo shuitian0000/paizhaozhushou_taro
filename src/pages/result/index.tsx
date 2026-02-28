@@ -104,20 +104,20 @@ export default function ResultPage() {
         if (score < 25) return '可调整主体'
         return '构图良好'
       case 'pose':
-        if (score < 20) return '姿态欠佳'
-        if (score < 25) return '可调整姿势'
+        if (score < 12) return '姿态欠佳'
+        if (score < 16) return '可调整姿势'
         return '姿态自然'
       case 'angle':
-        if (score < 12) return '角度欠佳'
-        if (score < 16) return '可换视角'
-        return '角度合适'
+        if (score < 12) return '立体感欠佳'
+        if (score < 16) return '可增强对比'
+        return '立体感合适'
       case 'distance':
-        if (score < 6) return '距离不当'
-        if (score < 8) return '可调距离'
+        if (score < 8) return '距离不当'
+        if (score < 11) return '可调距离'
         return '距离适中'
       case 'height':
-        if (score < 6) return '光线不足'
-        if (score < 8) return '曝光欠佳'
+        if (score < 8) return '光线不足'
+        if (score < 12) return '曝光欠佳'
         return '光线良好'
       default:
         return ''
@@ -205,7 +205,7 @@ export default function ResultPage() {
                         {getShortSuggestion('pose', evaluation.pose_score)}
                       </Text>
                       <Text className={`text-lg font-bold ${getScoreColor(evaluation.pose_score)}`}>
-                        {evaluation.pose_score}/30
+                        {evaluation.pose_score}/20
                       </Text>
                     </View>
                   </View>
@@ -213,20 +213,20 @@ export default function ResultPage() {
                     <View
                       className="h-full bg-secondary rounded-full"
                       style={{
-                        width: `${(evaluation.pose_score / 30) * 100}%`
+                        width: `${(evaluation.pose_score / 20) * 100}%`
                       }}
                     />
                   </View>
                 </View>
               )}
 
-              {/* 角度 */}
+              {/* 立体感 */}
               {evaluation.angle_score !== null && (
                 <View>
                   <View className="flex flex-row items-center justify-between mb-2">
                     <View className="flex flex-row items-center">
                       <View className="i-mdi-angle-acute text-xl text-accent mr-2" />
-                      <Text className="text-sm font-medium text-foreground">拍摄角度</Text>
+                      <Text className="text-sm font-medium text-foreground">立体感</Text>
                     </View>
                     <View className="flex flex-row items-center">
                       <Text className="text-xs text-muted-foreground mr-2">
@@ -261,7 +261,7 @@ export default function ResultPage() {
                         {getShortSuggestion('distance', evaluation.distance_score)}
                       </Text>
                       <Text className={`text-lg font-bold ${getScoreColor(evaluation.distance_score)}`}>
-                        {evaluation.distance_score}/10
+                        {evaluation.distance_score}/15
                       </Text>
                     </View>
                   </View>
@@ -269,7 +269,7 @@ export default function ResultPage() {
                     <View
                       className="h-full bg-primary rounded-full"
                       style={{
-                        width: `${(evaluation.distance_score / 10) * 100}%`
+                        width: `${(evaluation.distance_score / 15) * 100}%`
                       }}
                     />
                   </View>
@@ -289,7 +289,7 @@ export default function ResultPage() {
                         {getShortSuggestion('height', evaluation.height_score)}
                       </Text>
                       <Text className={`text-lg font-bold ${getScoreColor(evaluation.height_score)}`}>
-                        {evaluation.height_score}/10
+                        {evaluation.height_score}/15
                       </Text>
                     </View>
                   </View>
@@ -297,7 +297,35 @@ export default function ResultPage() {
                     <View
                       className="h-full bg-secondary rounded-full"
                       style={{
-                        width: `${(evaluation.height_score / 10) * 100}%`
+                        width: `${(evaluation.height_score / 15) * 100}%`
+                      }}
+                    />
+                  </View>
+                </View>
+              )}
+
+              {/* 姿态 */}
+              {evaluation.pose_score !== null && (
+                <View>
+                  <View className="flex flex-row items-center justify-between mb-2">
+                    <View className="flex flex-row items-center">
+                      <View className="i-mdi-human-handsup text-xl text-secondary mr-2" />
+                      <Text className="text-sm font-medium text-foreground">人物姿态</Text>
+                    </View>
+                    <View className="flex flex-row items-center">
+                      <Text className="text-xs text-muted-foreground mr-2">
+                        {getShortSuggestion('pose', evaluation.pose_score)}
+                      </Text>
+                      <Text className={`text-lg font-bold ${getScoreColor(evaluation.pose_score)}`}>
+                        {evaluation.pose_score}/20
+                      </Text>
+                    </View>
+                  </View>
+                  <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                    <View
+                      className="h-full bg-secondary rounded-full"
+                      style={{
+                        width: `${(evaluation.pose_score / 20) * 100}%`
                       }}
                     />
                   </View>
@@ -307,52 +335,49 @@ export default function ResultPage() {
           </View>
 
           {/* 改进建议 */}
-          {evaluation.suggestions && (
+          {evaluation.suggestions && Object.keys(evaluation.suggestions).length > 0 && (
             <View className="bg-card rounded-2xl p-6 mb-6 shadow-card">
               <Text className="text-lg font-semibold text-foreground mb-4">改进建议</Text>
               <View className="space-y-3">
-                {evaluation.suggestions.composition && (
+                {evaluation.suggestions?.composition && (
                   <View className="flex flex-row items-start">
                     <View className="i-mdi-lightbulb text-lg text-accent mr-2 mt-0.5" />
                     <View className="flex-1">
                       <Text className="text-sm font-medium text-foreground mb-1">构图建议</Text>
-                      <Text className="text-sm text-muted-foreground">{evaluation.suggestions.composition}</Text>
+                      <Text className="text-sm text-muted-foreground">{evaluation.suggestions?.composition}</Text>
                     </View>
                   </View>
                 )}
-                {evaluation.suggestions.pose && (
+                {evaluation.suggestions?.pose && (
                   <View className="flex flex-row items-start">
                     <View className="i-mdi-lightbulb text-lg text-accent mr-2 mt-0.5" />
                     <View className="flex-1">
                       <Text className="text-sm font-medium text-foreground mb-1">姿态建议</Text>
-                      <Text className="text-sm text-muted-foreground">{evaluation.suggestions.pose}</Text>
+                      <Text className="text-sm text-muted-foreground">{evaluation.suggestions?.pose}</Text>
                     </View>
                   </View>
                 )}
-                {evaluation.suggestions.angle && (
-                  <View className="flex flex-row items-start">
-                    <View className="i-mdi-lightbulb text-lg text-accent mr-2 mt-0.5" />
-                    <View className="flex-1">
-                      <Text className="text-sm font-medium text-foreground mb-1">角度建议</Text>
-                      <Text className="text-sm text-muted-foreground">{evaluation.suggestions.angle}</Text>
-                    </View>
+                {evaluation.suggestions?.angle && (
+                  <View className="bg-muted/50 rounded-lg p-3 mb-3">
+                    <Text className="text-sm font-medium text-foreground mb-1">立体感建议</Text>
+                    <Text className="text-sm text-muted-foreground">{evaluation.suggestions?.angle}</Text>
                   </View>
                 )}
-                {evaluation.suggestions.distance && (
+                {evaluation.suggestions?.distance && (
                   <View className="flex flex-row items-start">
                     <View className="i-mdi-lightbulb text-lg text-accent mr-2 mt-0.5" />
                     <View className="flex-1">
                       <Text className="text-sm font-medium text-foreground mb-1">距离建议</Text>
-                      <Text className="text-sm text-muted-foreground">{evaluation.suggestions.distance}</Text>
+                      <Text className="text-sm text-muted-foreground">{evaluation.suggestions?.distance}</Text>
                     </View>
                   </View>
                 )}
-                {evaluation.suggestions.height && (
+                {evaluation.suggestions?.height && (
                   <View className="flex flex-row items-start">
                     <View className="i-mdi-lightbulb text-lg text-accent mr-2 mt-0.5" />
                     <View className="flex-1">
                       <Text className="text-sm font-medium text-foreground mb-1">高度建议</Text>
-                      <Text className="text-sm text-muted-foreground">{evaluation.suggestions.height}</Text>
+                      <Text className="text-sm text-muted-foreground">{evaluation.suggestions?.height}</Text>
                     </View>
                   </View>
                 )}
