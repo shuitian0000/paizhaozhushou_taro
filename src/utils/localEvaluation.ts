@@ -48,15 +48,15 @@ const CONFIG = {
   },
   // 主体分析
   subject: {
-    contrastThreshold: 30, // 主体对比度阈值
-    ratioNormalization: 10, // 主体占比归一化因子
-    densityNormalization: 2, // 中心密度归一化因子
-    idealMin: 0.4, // 理想主体占比最小值
-    idealMax: 0.6, // 理想主体占比最大值
-    acceptableMin: 0.3, // 可接受最小值
-    acceptableMax: 0.7, // 可接受最大值
-    adjustMin: 0.2, // 需要调整最小值
-    adjustMax: 0.8 // 需要调整最大值
+    contrastThreshold: 30,
+    ratioNormalization: 1.5,
+    densityNormalization: 1.5,
+    idealMin: 0.25,
+    idealMax: 0.55,
+    acceptableMin: 0.18,
+    acceptableMax: 0.65,
+    adjustMin: 0.12,
+    adjustMax: 0.75
   },
   // 中心焦点
   centerFocus: {
@@ -211,7 +211,8 @@ const CONFIG = {
   // 画面布局
   layout: {
     portrait: 1,
-    landscape: 1.3
+    landscape: 1.3,
+    squareThreshold: 1.1
   },
   // 头部空间与视线方向检测
   headroom: {
@@ -227,7 +228,7 @@ const CONFIG = {
   // 姿态评估开关
   pose: {
     enableRuleBasedPose: true,
-    weight: 0.7,
+    weight: 1.0,
     ruleBased: {
       frontal: {
         centerFocusMin: 0.7,
@@ -305,6 +306,38 @@ const CONFIG = {
         centerFocusThreshold: 0.5,
         detailRichnessThreshold: 0.4
       }
+    }
+  },
+  // 纹理分析配置
+  texture: {
+    blockSize: 8,
+    normalization: 500
+  },
+  // 色彩多样性
+  colorDiversity: {
+    hueBins: 36,
+    maxEntropy: 5.17
+  },
+  // 场景判断权重
+  sceneDetection: {
+    portrait: {
+      centerFocusMin: 0.55,
+      detailMin: 0.35,
+      centerToEdgeRatioMin: 1.3,
+      hueEntropyMax: 0.5,
+      skinRatioMin: 0.05
+    },
+    landscape: {
+      centerFocusMax: 0.45,
+      ruleOfThirdsMin: 0.5,
+      textureUniformityMin: 0.6,
+      hueEntropyMin: 0.5
+    },
+    group: {
+      centerFocusMin: 0.4,
+      ruleOfThirdsMin: 0.45,
+      hueEntropyMax: 0.55,
+      skinRatioMin: 0.08
     }
   }
 }
@@ -630,6 +663,59 @@ function analyzeColorSaturation(imageData: ImageData): number {
 }
 
 /**
+ * 色彩多样性分析 — 色相直方图熵
+ * 人像：色相集中在肤色范围（熵低）
+ * 风景：色彩丰富（熵高）
+ */
+function analyzeColorDiversity(imageData: ImageData): number {
+  const {data, width, height} = imageData
+  const hueHistogram = new Array(36).fill(0)
+  let totalPixels = 0
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4
+      const r = data[i] / 255
+      const g = data[i + 1] / 255
+      const b = data[i + 2] / 255
+
+      const max = Math.max(r, g, b)
+      const min = Math.min(r, g, b)
+      const diff = max - min
+
+      if (diff < 0.01) continue
+
+      let hue = 0
+      if (max === r) {
+        hue = ((g - b) / diff) % 6
+      } else if (max === g) {
+        hue = (b - r) / diff + 2
+      } else {
+        hue = (r - g) / diff + 4
+      }
+      hue = hue * 60
+      if (hue < 0) hue += 360
+
+      const bin = Math.min(Math.floor(hue / 10), 35)
+      hueHistogram[bin]++
+      totalPixels++
+    }
+  }
+
+  if (totalPixels === 0) return 0
+
+  let entropy = 0
+  for (let i = 0; i < 36; i++) {
+    if (hueHistogram[i] > 0) {
+      const p = hueHistogram[i] / totalPixels
+      entropy -= p * Math.log2(p)
+    }
+  }
+
+  return Math.min(entropy / 5.17, 1)
+}
+
+/**
  * 边缘检测结果类型
  */
 interface EdgeResult {
@@ -715,50 +801,102 @@ function analyzeSubjectSize(
   subjectRatio: number
   centerDensity: number
 } {
-  const {width, height} = imageData
+  const {data, width, height} = imageData
   const centerX = Math.floor(width / 2)
   const centerY = Math.floor(height / 2)
 
-  // 计算中心区域大小（1/3画面）
-  const centerWidth = Math.floor(width / 3)
-  const centerHeight = Math.floor(height / 3)
-
-  // 复用边缘数据或重新计算
   let edgeData: boolean[]
   if (edgeResult) {
     edgeData = edgeResult.highContrastPixels
   } else {
-    const edge = analyzeEdges(imageData)
-    edgeData = edge.highContrastPixels
+    edgeData = analyzeEdges(imageData).highContrastPixels
   }
 
-  let centerHighContrastPixels = 0
-  let totalCenterPixels = 0
-  let totalHighContrastPixels = 0
+  const pixelCount = width * height
+  let sumR = 0,
+    sumG = 0,
+    sumB = 0
+  for (let i = 0; i < pixelCount; i++) {
+    const idx = i * 4
+    sumR += data[idx]
+    sumG += data[idx + 1]
+    sumB += data[idx + 2]
+  }
+  const avgR = sumR / pixelCount
+  const avgG = sumG / pixelCount
+  const avgB = sumB / pixelCount
+
+  const sigma = Math.min(width, height) / 5
+  const sigma2 = 2 * sigma * sigma
+  const gaussianWeight: number[] = new Array(pixelCount)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const dx = x - centerX
+      const dy = y - centerY
+      gaussianWeight[y * width + x] = Math.exp(-(dx * dx + dy * dy) / sigma2)
+    }
+  }
+
+  const GRID = 12
+  const cellW = Math.ceil(width / GRID)
+  const cellH = Math.ceil(height / GRID)
+  const edgeDensity: number[] = new Array(GRID * GRID).fill(0)
+  const cellCount: number[] = new Array(GRID * GRID).fill(0)
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const edgeIdx = y * width + x
-      const isHighContrast = edgeData[edgeIdx] || false
-
-      if (isHighContrast) {
-        totalHighContrastPixels++
+      const idx = y * width + x
+      const gx = Math.min(Math.floor(x / cellW), GRID - 1)
+      const gy = Math.min(Math.floor(y / cellH), GRID - 1)
+      const cellIdx = gy * GRID + gx
+      cellCount[cellIdx]++
+      if (edgeData[idx]) {
+        edgeDensity[cellIdx]++
       }
+    }
+  }
+  for (let i = 0; i < GRID * GRID; i++) {
+    edgeDensity[i] = cellCount[i] > 0 ? edgeDensity[i] / cellCount[i] : 0
+  }
 
-      // 检查是否在中心区域
-      const inCenterX = Math.abs(x - centerX) < centerWidth / 2
-      const inCenterY = Math.abs(y - centerY) < centerHeight / 2
+  let totalScore = 0
+  let totalEdgePixels = 0
+  let centerEdgeSum = 0
+  let centerEdgeCount = 0
+  const centerThirdW = Math.floor(width / 6)
+  const centerThirdH = Math.floor(height / 6)
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x
+      if (!edgeData[idx]) continue
+
+      totalEdgePixels++
+      const pIdx = idx * 4
+      const dr = data[pIdx] - avgR
+      const dg = data[pIdx + 1] - avgG
+      const db = data[pIdx + 2] - avgB
+      const colorSaliency = Math.min(Math.sqrt(dr * dr + dg * dg + db * db) / 220, 1)
+
+      const gx = Math.min(Math.floor(x / cellW), GRID - 1)
+      const gy = Math.min(Math.floor(y / cellH), GRID - 1)
+      const localDensity = edgeDensity[gy * GRID + gx]
+
+      const gw = gaussianWeight[idx]
+      const pixelScore = gw * 0.3 + colorSaliency * 0.25 + localDensity * 0.25 + 0.2
+      totalScore += pixelScore
+
+      const inCenterX = Math.abs(x - centerX) < centerThirdW
+      const inCenterY = Math.abs(y - centerY) < centerThirdH
       if (inCenterX && inCenterY) {
-        totalCenterPixels++
-        if (isHighContrast) {
-          centerHighContrastPixels++
-        }
+        centerEdgeSum += pixelScore
+        centerEdgeCount++
       }
     }
   }
 
-  const centerDensity = totalCenterPixels > 0 ? centerHighContrastPixels / totalCenterPixels : 0
-  const subjectRatio = totalHighContrastPixels / (width * height)
+  const subjectRatio = totalEdgePixels > 0 ? totalScore / totalEdgePixels : 0
+  const centerDensity = centerEdgeCount > 0 ? centerEdgeSum / centerEdgeCount : 0
 
   return {
     subjectRatio: Math.min(subjectRatio * CONFIG.subject.ratioNormalization, 1),
@@ -841,7 +979,7 @@ function analyzePose(
   }
 
   // 应用权重系数（本地算法无法精确检测姿态，降权）
-  const finalScore = Math.round(score * CONFIG.pose.weight)
+  const finalScore = Math.round(score)
 
   return {
     pose_type,
@@ -864,6 +1002,92 @@ function analyzeContrast(imageData: ImageData, precomputedGray?: number[]): numb
   const stdDev = Math.sqrt(variance)
 
   return Math.min(stdDev / CONFIG.contrast.normalization, 1) // 归一化到0-1
+}
+
+/**
+ * 纹理复杂度分析 — 基于 Laplacian 方差的区域分布
+ * 用于区分人像（中心纹理丰富/边缘平滑）和风景（均匀纹理）
+ */
+function analyzeTextureComplexity(
+  imageData: ImageData,
+  precomputedGray?: number[]
+): {
+  centerTexture: number
+  edgeTexture: number
+  textureUniformity: number
+  centerToEdgeRatio: number
+} {
+  const {width, height} = imageData
+  const gray = precomputedGray || precomputeGrayscale(imageData)
+
+  const blockSize = 8
+  const blocksX = Math.floor(width / blockSize)
+  const blocksY = Math.floor(height / blockSize)
+
+  const centerBlockXStart = Math.floor(blocksX * 0.25)
+  const centerBlockXEnd = Math.floor(blocksX * 0.75)
+  const centerBlockYStart = Math.floor(blocksY * 0.25)
+  const centerBlockYEnd = Math.floor(blocksY * 0.75)
+
+  let centerLaplacianVarianceSum = 0
+  let centerBlockCount = 0
+  let edgeLaplacianVarianceSum = 0
+  let edgeBlockCount = 0
+  const allVariances: number[] = []
+
+  for (let by = 0; by < blocksY; by++) {
+    for (let bx = 0; bx < blocksX; bx++) {
+      const startX = bx * blockSize
+      const startY = by * blockSize
+      let laplacianSum = 0
+      let laplacianSumSq = 0
+      let count = 0
+
+      for (let y = startY + 1; y < startY + blockSize - 1 && y < height - 1; y++) {
+        for (let x = startX + 1; x < startX + blockSize - 1 && x < width - 1; x++) {
+          const idx = y * width + x
+          const lap = 4 * gray[idx] - gray[idx - 1] - gray[idx + 1] - gray[idx - width] - gray[idx + width]
+          laplacianSum += Math.abs(lap)
+          laplacianSumSq += Math.abs(lap) * Math.abs(lap)
+          count++
+        }
+      }
+
+      if (count > 0) {
+        const mean = laplacianSum / count
+        const variance = laplacianSumSq / count - mean * mean
+        allVariances.push(variance)
+
+        const isCenter =
+          bx >= centerBlockXStart && bx < centerBlockXEnd && by >= centerBlockYStart && by < centerBlockYEnd
+        if (isCenter) {
+          centerLaplacianVarianceSum += variance
+          centerBlockCount++
+        } else {
+          edgeLaplacianVarianceSum += variance
+          edgeBlockCount++
+        }
+      }
+    }
+  }
+
+  const centerTexture = centerBlockCount > 0 ? Math.min(centerLaplacianVarianceSum / centerBlockCount / 500, 1) : 0
+  const edgeTexture = edgeBlockCount > 0 ? Math.min(edgeLaplacianVarianceSum / edgeBlockCount / 500, 1) : 0
+  const centerToEdgeRatio = edgeTexture > 0.001 ? centerTexture / edgeTexture : 1
+
+  let textureUniformity = 0.5
+  if (allVariances.length > 1) {
+    const meanV = allVariances.reduce((s, v) => s + v, 0) / allVariances.length
+    const stdV = Math.sqrt(allVariances.reduce((s, v) => s + (v - meanV) ** 2, 0) / allVariances.length)
+    textureUniformity = meanV > 0.001 ? Math.min(1 / (1 + stdV / meanV), 1) : 0.5
+  }
+
+  return {
+    centerTexture: Math.round(centerTexture * 100) / 100,
+    edgeTexture: Math.round(edgeTexture * 100) / 100,
+    textureUniformity: Math.round(textureUniformity * 100) / 100,
+    centerToEdgeRatio: Math.round(centerToEdgeRatio * 100) / 100
+  }
 }
 
 /**
@@ -1214,7 +1438,7 @@ function analyzeColorTemperature(imageData: ImageData): {
  * @param precomputedGray - 可选的预计算灰度数组
  * @returns 黄金分割得分
  */
-function analyzeGoldenRatio(
+function _analyzeGoldenRatio(
   imageData: ImageData,
   precomputedGray?: number[]
 ): {golden_ratio_score: number; has_golden_point: boolean} {
@@ -2477,7 +2701,7 @@ function analyzeAdaptiveSkinTone(imageData: ImageData): {
  * @param faceRegion - 面部区域（可选，自动检测）
  * @returns 头部空间分析结果
  */
-function analyzeHeadroom(
+function _analyzeHeadroom(
   imageData: ImageData,
   faceRegion?: {x: number; y: number; width: number; height: number} | null
 ): {
@@ -2808,8 +3032,8 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
           // 11. 黄金分割构图分析
           const colorTemp = analyzeColorTemperature(imageData)
 
-          // 12. 黄金分割构图分析
-          const goldenRatio = analyzeGoldenRatio(imageData, grayScale)
+          // 12. 黄金分割构图分析（已合并入三分法，此处返回默认值）
+          const goldenRatio = {golden_ratio_score: 0, has_golden_point: false}
 
           // 13. 对角线构图分析（复用灰度数据和边缘信息）
           const diagonalScore = analyzeDiagonalLines(imageData, grayScale, edgeInfo)
@@ -2820,15 +3044,23 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
           // 15. 画面平衡度分析（复用灰度数据）
           const balance = analyzeBalance(imageData, grayScale)
 
-          // P0新增：人像专业分析
-          // 眼神光检测
-          const eyeCatchlight = analyzeEyeCatchlight(imageData)
+          // P1-C新增：纹理复杂度分析
+          const textureInfo = analyzeTextureComplexity(imageData, grayScale)
 
-          // 面部优先曝光分析
-          const faceExposure = analyzeFaceExposure(imageData)
+          // P1-C新增：色彩多样性分析
+          const colorDiversity = analyzeColorDiversity(imageData)
 
-          // 眼睛对焦检测
-          const eyeFocus = analyzeEyeFocus(imageData)
+          // P0新增：人像专业分析 - 提前检测面部区域，所有函数共享避免重复计算
+          const faceRegion = locateFaceRegion(imageData)
+
+          // 眼神光检测（复用面部区域）
+          const eyeCatchlight = analyzeEyeCatchlight(imageData, faceRegion)
+
+          // 面部优先曝光分析（复用面部区域）
+          const faceExposure = analyzeFaceExposure(imageData, faceRegion)
+
+          // 眼睛对焦检测（复用面部区域）
+          const eyeFocus = analyzeEyeFocus(imageData, faceRegion)
 
           // P1新增：自适应肤色分析
           // 16. 自适应肤色检测
@@ -2868,36 +3100,32 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
 
           // 3. 距离得分 (15分) - 优化版
           // 使用主体占比和中心密度来评估距离
-          // 理想状态：主体占画面40-60%，中心密度适中
+          // 理想状态：主体占画面25-55%，中心密度适中
           let distanceScore = 0
           if (
             subjectSize.subjectRatio >= CONFIG.subject.idealMin &&
             subjectSize.subjectRatio <= CONFIG.subject.idealMax
           ) {
-            // 主体大小理想
             distanceScore = CONFIG.score.distanceFull
           } else if (
             subjectSize.subjectRatio >= CONFIG.subject.acceptableMin &&
             subjectSize.subjectRatio <= CONFIG.subject.acceptableMax
           ) {
-            // 主体大小可接受
             distanceScore = 12
           } else if (
             subjectSize.subjectRatio >= CONFIG.subject.adjustMin &&
             subjectSize.subjectRatio <= CONFIG.subject.adjustMax
           ) {
-            // 主体大小需要调整
             distanceScore = 9
           } else if (subjectSize.subjectRatio < CONFIG.subject.adjustMin) {
-            // 主体太小，距离太远
             distanceScore = 6
           } else {
-            // 主体太大，距离太近
             distanceScore = 7
           }
 
           // 4. 光线得分 (15分)
           // 专业光线考虑：曝光准确性、明暗分布、色彩饱和度、光线方向
+          const saturation = analyzeColorSaturation(imageData)
           const lightDirection = analyzeLightDirection(imageData, grayScale)
           let heightScore = 0
 
@@ -2960,41 +3188,48 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
             poseScore = poseResult.score
             poseBaseScore = poseResult.score
           } else {
-            // 原有方案：基于场景类型的基础分（已降权）
-            poseBaseScore = Math.round(CONFIG.score.poseBase * CONFIG.pose.weight) // 默认5分
+            // 原有方案：基于场景类型的基础分（权重已整合）
+            poseBaseScore = CONFIG.score.poseBase
             if (
               centerFocus > CONFIG.centerFocus.strongThreshold &&
               edgeInfo.detailRichness > CONFIG.sceneThresholds.portrait.detail
             ) {
-              poseBaseScore = Math.round(CONFIG.score.posePortrait * CONFIG.pose.weight)
+              poseBaseScore = CONFIG.score.posePortrait
             } else if (
               centerFocus < CONFIG.centerFocus.weakThreshold &&
               ruleOfThirds > CONFIG.sceneThresholds.landscape.ruleOfThirds
             ) {
-              poseBaseScore = Math.round(CONFIG.score.poseLandscape * CONFIG.pose.weight)
+              poseBaseScore = CONFIG.score.poseLandscape
             }
           }
 
           // 总分计算
           const totalScore = compositionScore + contrastScore + distanceScore + heightScore + poseBaseScore
 
-          // 场景类型判断
+          // 场景类型判断（增强版）
           let sceneType = 'other'
+          const sd = CONFIG.sceneDetection
           if (
-            centerFocus > CONFIG.sceneThresholds.portrait.centerFocus &&
-            edgeInfo.detailRichness > CONFIG.sceneThresholds.portrait.detail
+            (centerFocus > sd.portrait.centerFocusMin ||
+              textureInfo.centerToEdgeRatio > sd.portrait.centerToEdgeRatioMin) &&
+            edgeInfo.detailRichness > sd.portrait.detailMin &&
+            (adaptiveSkinTone.skinRatio > sd.portrait.skinRatioMin || colorDiversity < sd.portrait.hueEntropyMax)
           ) {
             sceneType = 'portrait'
           } else if (
-            centerFocus < CONFIG.sceneThresholds.landscape.centerFocus &&
-            ruleOfThirds > CONFIG.sceneThresholds.landscape.ruleOfThirds
-          ) {
-            sceneType = 'landscape'
-          } else if (
-            centerFocus > CONFIG.sceneThresholds.group.centerFocus &&
-            ruleOfThirds > CONFIG.sceneThresholds.group.ruleOfThirds
+            centerFocus > sd.group.centerFocusMin &&
+            ruleOfThirds > sd.group.ruleOfThirdsMin &&
+            adaptiveSkinTone.skinRatio > sd.group.skinRatioMin &&
+            colorDiversity < sd.group.hueEntropyMax
           ) {
             sceneType = 'group'
+          } else if (
+            centerFocus < sd.landscape.centerFocusMax &&
+            ruleOfThirds > sd.landscape.ruleOfThirdsMin &&
+            textureInfo.textureUniformity > sd.landscape.textureUniformityMin &&
+            colorDiversity > sd.landscape.hueEntropyMin
+          ) {
+            sceneType = 'landscape'
           }
 
           // 计算置信度
@@ -3012,9 +3247,12 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
           const suggestions: LocalEvaluationResult['suggestions'] = {}
 
           // 分析画面布局（用于生成具体建议）
-          const imageAspectRatio = canvas.width / canvas.height
-          const isPortrait = imageAspectRatio < CONFIG.layout.portrait // 竖屏
-          const isLandscape = imageAspectRatio > CONFIG.layout.landscape // 横屏
+          const imgWidth = canvas.width
+          const imgHeight = canvas.height
+          const aspectRatio = Math.max(imgWidth, imgHeight) / Math.min(imgWidth, imgHeight)
+          const isSquare = aspectRatio < CONFIG.layout.squareThreshold
+          const isPortrait = !isSquare && imgWidth < imgHeight
+          const isLandscape = !isSquare && imgWidth > imgHeight
 
           // 构图建议 - 通俗易懂的用户友好语言
           if (compositionScore < 15) {
@@ -3037,6 +3275,8 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
             }
           } else if (compositionScore < 25) {
             suggestions.composition = '构图很棒，保持这个姿势！'
+          } else {
+            suggestions.composition = '构图不错，主体位置恰当，可以尝试加入前景元素增加层次感'
           }
 
           // 立体感建议 - 通俗易懂
@@ -3060,27 +3300,31 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
             }
           } else if (contrastScore < 17) {
             suggestions.angle = '光影层次很棒，画面很有立体感！'
+          } else {
+            suggestions.angle = '角度选择好，立体感强，保持这个拍摄角度'
           }
 
           // 距离建议 - 通俗易懂
           if (distanceScore < 8) {
-            if (subjectSize.subjectRatio < 0.2) {
+            if (subjectSize.subjectRatio < 0.12) {
               suggestions.distance = '离镜头太远了，往前走几步会更醒目'
-            } else if (subjectSize.subjectRatio > 0.8) {
+            } else if (subjectSize.subjectRatio > 0.75) {
               suggestions.distance = '离镜头太近了，稍微往后退一点，构图会更舒服'
             } else {
               suggestions.distance = '调整下距离，人物会更突出'
             }
           } else if (distanceScore < 11) {
-            if (subjectSize.subjectRatio < 0.3) {
+            if (subjectSize.subjectRatio < 0.18) {
               suggestions.distance = '稍微靠近一点，面部细节会更清晰'
-            } else if (subjectSize.subjectRatio > 0.7) {
+            } else if (subjectSize.subjectRatio > 0.65) {
               suggestions.distance = '稍微往后退一点，可以拍到全身'
             } else {
               suggestions.distance = '距离刚刚好，可以根据需求微调'
             }
           } else if (distanceScore < 13) {
             suggestions.distance = '距离恰到好处，很棒！'
+          } else {
+            suggestions.distance = '距离适中，主体突出，根据想要的效果微调位置'
           }
 
           // 机位高度建议 - 通俗易懂
@@ -3109,9 +3353,13 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
               }
             }
           } else if (heightScore < 14) {
-            if (subjectSize.subjectRatio > 0.7) {
+            if (subjectSize.subjectRatio > 0.4) {
               suggestions.height = '光线很好，稍微调整下高度会有惊喜'
+            } else {
+              suggestions.height = '光线条件不错，可以尝试不同角度获得更有层次的效果'
             }
+          } else {
+            suggestions.height = '光线条件好，曝光准确，注意面部光线方向'
           }
 
           // 人物姿态建议 - 通俗易懂
@@ -3132,7 +3380,8 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
             // 如果有模糊或噪点，添加画质建议
             if (quality.is_blurry && !suggestions.composition) {
               suggestions.composition = '画面有点模糊，拍照时手要稳住哦'
-            } else if (quality.has_noise && !suggestions.height) {
+            }
+            if (quality.has_noise && !suggestions.height) {
               suggestions.height = '画面噪点有点多，光线充足时拍效果会更好'
             }
 
@@ -3170,6 +3419,27 @@ export async function evaluatePhotoLocally(imagePath: string): Promise<LocalEval
             }
           } catch (e) {
             console.error('生成额外建议失败:', e)
+          }
+
+          // 保底：确保至少有一条建议
+          const hasAnySuggestion = Object.values(suggestions).some((s) => s && s.length > 0)
+          if (!hasAnySuggestion) {
+            const dims = [
+              {name: 'composition', score: compositionScore, full: CONFIG.score.compositionFull, suggestion: null},
+              {name: 'angle', score: contrastScore, full: CONFIG.score.angleFull, suggestion: null},
+              {name: 'distance', score: distanceScore, full: CONFIG.score.distanceFull, suggestion: null},
+              {name: 'height', score: heightScore, full: CONFIG.score.heightFull, suggestion: null}
+            ]
+            dims.sort((a, b) => a.score / a.full - b.score / b.full)
+            const worst = dims[0]
+            if (worst.score / worst.full < 0.5) {
+              if (worst.name === 'composition') suggestions.composition = '可以尝试调整主体位置或角度让构图更均衡'
+              else if (worst.name === 'angle') suggestions.angle = '换个拍摄角度，增加画面的立体感和层次感'
+              else if (worst.name === 'distance') suggestions.distance = '调整拍摄距离，让主体大小更合适'
+              else if (worst.name === 'height') suggestions.height = '注意光线方向，调整机位高度改善面部曝光'
+            } else {
+              suggestions.composition = '整体表现不错，可以尝试更有创意的构图或角度'
+            }
           }
 
           clearTimeout(timeoutId)

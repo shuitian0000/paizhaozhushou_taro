@@ -165,9 +165,17 @@ export default function CameraPage() {
               }
             }
 
-            // 如果所有维度都很好，显示鼓励信息
-            if (suggestions.length === 0) {
-              suggestions.push('画面优秀，可以拍摄！')
+            // 如果所有维度都没有具体建议，根据总分显示兜底提示
+            if (suggestions.length === 0 && result.total_score) {
+              if (result.total_score >= 85) {
+                suggestions.push('整体表现不错，可以尝试更有创意的构图或角度')
+              } else if (result.total_score >= 70) {
+                suggestions.push('画面基础不错，试试微调角度或距离获得更好效果')
+              } else if (result.total_score >= 50) {
+                suggestions.push('建议参考各维度评分，针对性地调整拍摄方式')
+              } else {
+                suggestions.push('光线或构图需要较大调整，参考具体评分优化拍摄')
+              }
             }
 
             console.log('💡 实时建议:', suggestions)
@@ -498,6 +506,24 @@ export default function CameraPage() {
     }
   }
 
+  // 置信度展示辅助
+  const getConfidenceLabel = (overall: number): string => {
+    if (overall < 0.4) return '当前画面条件不佳，建议仅供参考'
+    if (overall < 0.6) return '参考分'
+    return ''
+  }
+
+  const getDimensionColor = (baseColor: string, dimConfidence: number, overallConfidence: number): string => {
+    if (overallConfidence < 0.4) return 'text-muted-foreground'
+    if (dimConfidence < 0.5) return 'text-gray-400'
+    return baseColor
+  }
+
+  const getTotalScoreTextColor = (overallConfidence: number, baseColor: string): string => {
+    if (overallConfidence < 0.4) return 'text-yellow-400'
+    return baseColor
+  }
+
   return (
     <View className="min-h-screen bg-gradient-dark">
       {/* H5 环境提示 */}
@@ -645,6 +671,15 @@ export default function CameraPage() {
                   </View>
                 )}
 
+                {/* 置信度低提示 */}
+                {evaluation && evaluation.confidence.overall < 0.4 && (
+                  <View className="bg-yellow-500/30 rounded-xl p-3 mt-3 border border-yellow-500/50">
+                    <Text className="text-xs text-yellow-300 text-center">
+                      {getConfidenceLabel(evaluation.confidence.overall)}
+                    </Text>
+                  </View>
+                )}
+
                 {/* 当前评分 */}
                 {evaluation && (
                   <View className="bg-black/40 rounded-xl p-4 mt-3">
@@ -656,13 +691,20 @@ export default function CameraPage() {
                       </Text>
                       <View className="flex flex-row items-center">
                         <Text
-                          className="text-2xl font-bold text-primary mr-1"
+                          className={`text-2xl font-bold mr-1 ${getTotalScoreTextColor(evaluation.confidence.overall, 'text-primary')}`}
                           style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
                           {evaluation.total_score}
                         </Text>
                         <Text className="text-xs text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
                           分
                         </Text>
+                        {evaluation.confidence.overall < 0.6 && (
+                          <Text
+                            className="text-xs text-yellow-400 ml-1"
+                            style={{textShadow: '0 2px 4px rgba(0,0,0,0.8)'}}>
+                            参考分
+                          </Text>
+                        )}
                       </View>
                     </View>
                     <View className="space-y-2">
@@ -788,14 +830,27 @@ export default function CameraPage() {
 
             {/* 评估结果 */}
             <View className="bg-card rounded-2xl p-6 mb-6 shadow-card">
+              {/* 置信度低提示 */}
+              {evaluation.confidence.overall < 0.4 && (
+                <View className="bg-yellow-500/20 rounded-lg p-3 mb-4 border border-yellow-500/40">
+                  <Text className="text-xs text-yellow-400 text-center">
+                    {getConfidenceLabel(evaluation.confidence.overall)}
+                  </Text>
+                </View>
+              )}
+
               {/* 总分 */}
               <View className="flex flex-col items-center mb-6 pb-6 border-b border-border">
                 <Text className="text-sm text-muted-foreground mb-2">综合评分</Text>
                 <View className="flex flex-row items-center">
-                  <Text className={`text-5xl font-bold ${getScoreColor(evaluation.total_score)} mr-2`}>
+                  <Text
+                    className={`text-5xl font-bold ${getTotalScoreTextColor(evaluation.confidence.overall, getScoreColor(evaluation.total_score))} mr-2`}>
                     {evaluation.total_score}
                   </Text>
                   <Text className="text-lg text-muted-foreground">分</Text>
+                  {evaluation.confidence.overall < 0.6 && (
+                    <Text className="text-sm text-yellow-500 ml-2 font-medium">参考分</Text>
+                  )}
                 </View>
               </View>
 
@@ -809,7 +864,10 @@ export default function CameraPage() {
                       <Text className="text-xs text-muted-foreground mr-2">
                         {getShortSuggestion('composition', evaluation.composition_score)}
                       </Text>
-                      <Text className="text-sm text-foreground font-medium">{evaluation.composition_score}/30</Text>
+                      <Text
+                        className={`text-sm font-medium ${getDimensionColor('text-foreground', evaluation.confidence.composition, evaluation.confidence.overall)}`}>
+                        {evaluation.composition_score}/30
+                      </Text>
                     </View>
                   </View>
                   <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
@@ -830,7 +888,10 @@ export default function CameraPage() {
                       <Text className="text-xs text-muted-foreground mr-2">
                         {getShortSuggestion('angle', evaluation.angle_score)}
                       </Text>
-                      <Text className="text-sm text-foreground font-medium">{evaluation.angle_score}/20</Text>
+                      <Text
+                        className={`text-sm font-medium ${getDimensionColor('text-foreground', evaluation.confidence.lighting, evaluation.confidence.overall)}`}>
+                        {evaluation.angle_score}/20
+                      </Text>
                     </View>
                   </View>
                   <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
@@ -851,14 +912,17 @@ export default function CameraPage() {
                       <Text className="text-xs text-muted-foreground mr-2">
                         {getShortSuggestion('distance', evaluation.distance_score)}
                       </Text>
-                      <Text className="text-sm text-foreground font-medium">{evaluation.distance_score}/10</Text>
+                      <Text
+                        className={`text-sm font-medium ${getDimensionColor('text-foreground', evaluation.confidence.distance, evaluation.confidence.overall)}`}>
+                        {evaluation.distance_score}/15
+                      </Text>
                     </View>
                   </View>
                   <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
                     <View
                       className="h-full bg-accent rounded-full"
                       style={{
-                        width: `${(evaluation.distance_score / 10) * 100}%`
+                        width: `${(evaluation.distance_score / 15) * 100}%`
                       }}
                     />
                   </View>
@@ -872,14 +936,17 @@ export default function CameraPage() {
                       <Text className="text-xs text-muted-foreground mr-2">
                         {getShortSuggestion('height', evaluation.height_score)}
                       </Text>
-                      <Text className="text-sm text-foreground font-medium">{evaluation.height_score}/10</Text>
+                      <Text
+                        className={`text-sm font-medium ${getDimensionColor('text-foreground', evaluation.confidence.lighting, evaluation.confidence.overall)}`}>
+                        {evaluation.height_score}/15
+                      </Text>
                     </View>
                   </View>
                   <View className="w-full h-2 bg-muted rounded-full overflow-hidden">
                     <View
                       className="h-full bg-primary rounded-full"
                       style={{
-                        width: `${(evaluation.height_score / 10) * 100}%`
+                        width: `${(evaluation.height_score / 15) * 100}%`
                       }}
                     />
                   </View>
